@@ -288,13 +288,19 @@ func DownloadLink(_ int, post PostData, config *Config) {
 		return
 	}
 	length := response.ContentLength
-	if config.MaxSize != -1 && (config.MaxSize < length || length == -1) {
+	// If larger or unknown length, skip
+	skipDueToSize := (config.MaxSize != -1) &&
+		(config.MaxSize < length || length == -1)
+	// if file length unknown and there is storage limit, skip
+	skipDueToSize = skipDueToSize ||
+		(config.MaxStorage != -1 && length == -1)
+	if skipDueToSize {
 		fmt.Printf("    [Too Large: %s]\n", size(length))
 		fmt.Println()
 		return
 	}
-	if config.MaxStorage != -1 &&
-			(config.MaxStorage < length+stats.CopiedBytes || length == -1) {
+	// if file length will go past the storage limit, finish 
+	if config.MaxStorage != -1 && config.MaxStorage < length+stats.CopiedBytes {
 		fmt.Printf("    [Storage Limit Hit: %s]\n", size(length))
 		fmt.Println()
 		Finish(&stats)
