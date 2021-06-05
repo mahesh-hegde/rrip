@@ -325,7 +325,7 @@ func DownloadLink(_ int, post PostData, config *Config) {
 
 	// Transfer success I hope
 	// write stats
-	fmt.Printf("    [Done: %s]\n", size(response.ContentLength))
+	fmt.Printf("    [Done: %s]\n", size(n))
 	fmt.Println()
 	stats.Saved += 1
 	if stats.Saved == config.MaxFiles {
