@@ -6,6 +6,37 @@ It downloads images from URLs that look like images
 
 It has a few configurable options as well
 
+## Features
+(Note: I have not tested all combinations of features, you might encounter some bugs!)
+
+* Set max size limit for media download (in KBs)
+
+* Fetch top / best / new / rising entries using -sort option
+
+* Assign a karma threshold (default 1)
+
+* If the image / gif is already downloaded, skip it.
+
+## Build
+Assuming you have Go toolchain installed
+
+There are no dependencies other than standard library
+
+```
+git clone --depth=1 https://github.com/mahesh-hegde/reddit-rip.git
+cd reddit-rip
+go build
+```
+
+your executable is "reddit-rip" or "reddit-rip.exe" depending on OS, saved in same folder.
+
+## Prebuilt binaries
+
+If you cannot build or don't want to build, look for binary releases in [releases section](https://github.com/mahesh-hegde/reddit-rip/releases/)
+
+*Those executables may not be up-to-date.*
+
+## Usage
 ```
 Usage: reddit-rip <options> <r/subreddit>
   -after string
