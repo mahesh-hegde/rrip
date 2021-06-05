@@ -185,11 +185,12 @@ func TraversePages(path string, config *Config, handler func(int, PostData)) {
 		target += "&t=" + topBy
 	}
 	for {
+		var link = target // final link
 		if after != "" {
-			target += "&after=" + after
+			link += "&after=" + after
 		}
-		Log(config.Debug, "REQUEST: ", target)
-		response, err := FetchUrl(target, config.UserAgent)
+		Log(config.Debug, "REQUEST: ", link)
+		response, err := FetchUrl(link, config.UserAgent)
 		check(err, "Cannot get JSON response")
 
 		processed := stats.Processed
@@ -379,6 +380,11 @@ func main() {
 
 	// enable debug output in case of dry run
 	config.Debug = config.Debug || config.DryRun
+
+	// when we provide an -after= parameter manually, we expect a t3_ prefix
+	if config.After != "" && !strings.HasSuffix(config.After, "t3_") {
+		config.After = "t3_" + config.After
+	}
 
 	// compute actual MaxStorage in bytes
 	// if you're overflowing this, you have bigger problems
