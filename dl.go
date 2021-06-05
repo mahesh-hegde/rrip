@@ -303,7 +303,7 @@ func DownloadLink(_ int, post PostData, config *Config) {
 	}
 	// if file length will go past the storage limit, finish 
 	if config.MaxStorage != -1 && config.MaxStorage < length+stats.CopiedBytes {
-		fmt.Printf("    [Storage Limit Hit: %s]\n", size(length))
+		fmt.Printf("    [%s | Crosses storage limit]\n", size(length))
 		fmt.Println()
 		Finish(&stats)
 	}
