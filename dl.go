@@ -363,7 +363,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	path := args[0]
+	path := strings.TrimSuffix(args[0], "/")
 
 	// validate some arguments
 	// handling 0 correctly probably requires some more code, so don't
