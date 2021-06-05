@@ -1,4 +1,4 @@
-## reddit-rip
+## rip for Reddit
 
 It's a simple image downloader CLI tool for reddit
 
