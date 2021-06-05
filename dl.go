@@ -113,6 +113,8 @@ func Finish(stats *Stats) {
 	fmt.Println("Other: ",
 		stats.Processed-stats.Failed-stats.Repeated-stats.Saved)
 	fmt.Println(strings.Repeat("-", 20))
+	fmt.Println("Approx. Storage Used:", size(stats.CopiedBytes))
+	fmt.Println(strings.Repeat("-", 20))
 	os.Exit(0)
 }
 
