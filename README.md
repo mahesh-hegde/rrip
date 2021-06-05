@@ -34,13 +34,13 @@ Usage: reddit-rip <options> <r/subreddit>
 
 **Note:**
 
-    * Pressing Ctrl+C will stop the program only after a file is completely downloaded, in order to avoid saving half-downloaded files. Use -max=<num> to limit number of files
+* Pressing Ctrl+C will stop the program only after a file is completely downloaded, in order to avoid saving half-downloaded files. Use -max=<num> to limit number of files
 
-    * -d implies -v
+* -d implies -v
     
-    * do not rely on -max-storage or -max-size to save data
+* do not rely on -max-storage or -max-size to save data
     
-    * I have not tested all combinations of options, you might discover some bugs !!
+* I have not tested all combinations of options, you might discover some bugs !!
 
 ## Sample Session
 
