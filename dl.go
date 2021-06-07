@@ -137,7 +137,7 @@ func HandlePosts(body io.ReadCloser, handler func(int, PostData)) (last string) 
 // Returns whether the image ends with ".jp[e]g", ".png", ".gif" or ".mp4"
 // also the extension string that matched
 func CheckImage(linkString string) (isImage bool, extension string) {
-	var exts = []string{".jpeg", ".gif", ".gifv", ".mp4", ".jpg", ".png"}
+	var exts = []string{".jpeg", ".gif", ".mp4", ".jpg", ".png"}
 	link, err := url.Parse(linkString)
 	check(err)
 	path := link.Path
