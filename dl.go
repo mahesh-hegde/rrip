@@ -31,6 +31,7 @@ type Config struct {
 	Debug, DryRun                  bool
 	MaxStorage, MaxSize            int64
 	OgType                         string
+	PostLinksFile, MediaLinksFile  io.Writer
 }
 
 type PostData struct {
@@ -279,6 +280,10 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 		return
 	}
 
+	// log the post links if required
+	if config.PostLinksFile != nil {
+		fmt.Fprintln(config.PostLinksFile, post.Url)
+	}
 	// check if url is image
 	url, extension := CheckImage(post.Url, config, client)
 	if url == "" {
@@ -288,6 +293,9 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 	filename := title + " [" + strings.TrimPrefix(post.Name, "t3_") + "]" + extension
 	log(config.Debug, "URL: ", post.Url, " | Ups:", post.Ups)
 	log(config.Debug && url != post.Url, "->", url)
+	if config.MediaLinksFile != nil {
+		fmt.Fprintln(config.MediaLinksFile, url)
+	}
 	fmt.Print(filename)
 	// check if already downloaded file
 	_, err := os.Stat(filename)
@@ -390,6 +398,8 @@ func main() {
 	help := false
 	// whether help option is provided
 	flag.BoolVar(&help, "help", false, "Show this help message")
+	var logMediaLinksTo, logPostLinksTo string
+	var err error
 	// option parsing
 	flag.BoolVar(&config.Debug, "v", false, "Enable verbose output")
 	flag.BoolVar(&config.DryRun, "d", false, "DryRun i.e just print urls and names")
@@ -398,6 +408,8 @@ func main() {
 	flag.Int64Var(&config.MaxStorage, "max-storage", -1, "Data usage limit in MB, -1 for no limit")
 	flag.Int64Var(&config.MaxSize, "max-size", -1, "Max size of media file in KB, -1 for no limit")
 	flag.StringVar(&config.Folder, "folder", "", "Target folder name")
+	flag.StringVar(&logMediaLinksTo, "log-media-links", "", "Log media links to given file")
+	flag.StringVar(&logPostLinksTo, "log-post-links", "", "Log all links found in posts to given file")
 	flag.StringVar(&config.OgType, "og-type", "", "Look Up for an og:property if link itself is not image" +
 			"supported: video, image, any");
 	flag.StringVar(&config.Sort, "sort", "", "Sort: best|hot|new|rising|top-<all|year|month|week|day>")
@@ -412,6 +424,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	if logMediaLinksTo != "" {
+		config.MediaLinksFile, err = os.Create(logMediaLinksTo)
+		check(err)
+	}
+	if logPostLinksTo != "" {
+		config.PostLinksFile, err = os.Create(logPostLinksTo)
+		check(err)
+	}
 	path := strings.TrimSuffix(args[0], "/")
 
 	// validate some arguments
@@ -451,7 +471,7 @@ func main() {
 	// Create folder
 	config.Folder = either(config.Folder,
 		strings.TrimPrefix(strings.ReplaceAll(path, "/", "."), "r."))
-	_, err := os.Stat(config.Folder)
+	_, err = os.Stat(config.Folder)
 
 	// Note: not creating folder anew if dry run
 	if os.IsNotExist(err) && !config.DryRun {
