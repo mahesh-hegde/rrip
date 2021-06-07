@@ -198,6 +198,7 @@ func TraversePages(path string, config *Config, handler func(int, PostData)) {
 		Log(config.Debug, "REQUEST: ", link)
 		response, err := FetchUrl(link, config.UserAgent, redditClient)
 		check(err, "Cannot get JSON response")
+		defer response.Body.Close()
 
 		processed := stats.Processed
 		after = HandlePosts(response.Body, handler)
@@ -281,10 +282,6 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 		stats.Failed += 1
 		fmt.Println("    [" + kind + " Error: " + err.Error() + "]")
 		fmt.Println()
-		if output != nil {
-			output.Close()
-			check(os.Remove(filename))
-		}
 		return
 	}
 	// Fetch
@@ -293,6 +290,8 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 		netError("Request ")
 		return
 	}
+	defer response.Body.Close()
+
 	length := response.ContentLength
 	// If larger or unknown length, skip
 	skipDueToSize := (config.MaxSize != -1) &&
@@ -320,6 +319,7 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 		stats.Failed += 1
 		return
 	}
+	defer output.Close()
 
 	// Copy
 	n, err := io.Copy(output, response.Body)
@@ -331,7 +331,6 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 
 	if err != nil {
 		netError("Transfer ")
-		response.Body.Close()
 		return
 	}
 
@@ -344,9 +343,6 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 		Finish(&stats)
 	}
 
-	// close files
-	check(response.Body.Close())
-	check(output.Close())
 	return
 }
 
