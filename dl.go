@@ -150,11 +150,11 @@ func CheckImage(linkString string) (isImage bool, extension string) {
 }
 
 // Returns Resp : *http.Response
-func FetchUrl(url string, userAgent string) (*http.Response, error) {
+func FetchUrl(url string, userAgent string, client *http.Client) (*http.Response, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	check(err)
 	req.Header.Add("User-Agent", userAgent)
-	client := &http.Client{}
+	// client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -186,13 +186,17 @@ func TraversePages(path string, config *Config, handler func(int, PostData)) {
 	if topBy != "" {
 		target += "&t=" + topBy
 	}
+	// create client
+	// http.Client caches connections
+	// that's why preferable to use same client
+	redditClient := &http.Client{}
 	for {
 		var link = target // final link
 		if after != "" {
 			link += "&after=" + after
 		}
 		Log(config.Debug, "REQUEST: ", link)
-		response, err := FetchUrl(link, config.UserAgent)
+		response, err := FetchUrl(link, config.UserAgent, redditClient)
 		check(err, "Cannot get JSON response")
 
 		processed := stats.Processed
@@ -204,7 +208,7 @@ func TraversePages(path string, config *Config, handler func(int, PostData)) {
 	}
 }
 
-func DownloadLink(_ int, post PostData, config *Config) {
+func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 	// signal handling:
 	// when ctrl+c is pressed, it should be buffered to a channel
 	// check that after every download
@@ -284,7 +288,7 @@ func DownloadLink(_ int, post PostData, config *Config) {
 		return
 	}
 	// Fetch
-	response, err := FetchUrl(post.Url, config.UserAgent)
+	response, err := FetchUrl(post.Url, config.UserAgent, client)
 	if err != nil {
 		netError("Request ")
 		return
@@ -422,8 +426,10 @@ func main() {
 	interrupt = make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
+	// create a client for all image downloader connections
+	client := &http.Client{}
 	// start downloading
 	TraversePages(path, &config, func(i int, post PostData) {
-		DownloadLink(i, post, &config)
+		DownloadLink(i, post, &config, client)
 	})
 }
