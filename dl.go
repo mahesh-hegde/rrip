@@ -134,19 +134,31 @@ func HandlePosts(body io.ReadCloser, handler func(int, PostData)) (last string) 
 	return last
 }
 
-// Returns whether the image ends with ".jp[e]g", ".png", ".gif" or ".mp4"
+// Returns whether the image link can be downloaded
+// if downloadable, return final URL, else return empty string
 // also the extension string that matched
-func CheckImage(linkString string) (isImage bool, extension string) {
+
+func CheckImage(linkString string) (finalLink string, extension string) {
 	var exts = []string{".jpeg", ".gif", ".mp4", ".jpg", ".png"}
 	link, err := url.Parse(linkString)
 	check(err)
 	path := link.Path
+
+	// imgur gifv links are generally MP4
+	if (link.Host == "i.imgur.com" || link.Host == "imgur.com") &&
+			strings.HasSuffix(path, ".gifv") {
+				trimmed := strings.TrimSuffix(path, ".gifv")
+				link.Path = trimmed + ".mp4"
+				link.Host = "i.imgur.com"
+				return link.String(), ".mp4"
+	}
+
 	for _, ext := range exts {
 		if strings.HasSuffix(path, ext) {
-			return true, ext
+			return linkString, ext
 		}
 	}
-	return false, ""
+	return "", ""
 }
 
 // Returns Resp : *http.Response
@@ -245,13 +257,14 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 	}
 
 	// check if url is image
-	isImage, extension := CheckImage(post.Url)
-	if !isImage {
+	url, extension := CheckImage(post.Url)
+	if url == "" {
 		Log(config.Debug, "Skip non-imagelike entry: ", title, " | ", post.Url, "\n")
 		return
 	}
 	filename := title + " [" + strings.TrimPrefix(post.Name, "t3_") + "]" + extension
 	Log(config.Debug, "URL: ", post.Url, " | Ups:", post.Ups)
+	Log(config.Debug && url != post.Url, "->", url)
 	fmt.Print(filename)
 	// check if already downloaded file
 	_, err := os.Stat(filename)
@@ -285,7 +298,7 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 		return
 	}
 	// Fetch
-	response, err := FetchUrl(post.Url, config.UserAgent, client)
+	response, err := FetchUrl(url, config.UserAgent, client)
 	if err != nil {
 		netError("Request ")
 		return
