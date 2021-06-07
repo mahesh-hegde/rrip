@@ -247,15 +247,18 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 	// check that after every download
 	// if it's pressed then exit
 
-	select {
-	case sig := <-interrupt:
-		if sig == os.Interrupt {
-			fmt.Println("Interrupt Received, Exit")
-			Finish(&stats)
+	checkInterrupt := func() {
+		select {
+		case sig := <-interrupt:
+			if sig == os.Interrupt {
+				fmt.Println(" Interrupt Received, Exit")
+				Finish(&stats)
+			}
+		default:
+			// do nothing
 		}
-	default:
-		// do nothing
 	}
+	checkInterrupt()
 	// process title, truncate if too long
 	title := strings.TrimSpace(strings.ReplaceAll(post.Title, "/", "|"))
 	title = html.UnescapeString(title) // &amp; etc.. are escaped in json
@@ -324,6 +327,9 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 		return
 	}
 	defer response.Body.Close()
+
+	// Give one more chance to exit, before creating the file
+	checkInterrupt()
 
 	length := response.ContentLength
 	// If larger or unknown length, skip
