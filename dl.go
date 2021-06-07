@@ -78,7 +78,7 @@ func check(e error, extra ...string) {
 	}
 }
 
-func Log(debug bool, vals ...interface{}) {
+func log(debug bool, vals ...interface{}) {
 	if debug {
 		fmt.Fprintln(os.Stdout, vals...)
 	}
@@ -163,14 +163,14 @@ func CheckImage(linkString string, config *Config, client *http.Client) (finalLi
 	// if ogType is given, read the link and get it's og:video or og:image
 	if config.OgType != "" {
 		response, err := FetchUrl(linkString, config.UserAgent, client)
-		Log(config.Debug, "REQUEST PAGE: " + linkString)
+		log(config.Debug, "REQUEST PAGE: " + linkString)
 		if err != nil {
-			Log(config.Debug, err.Error())
+			log(config.Debug, err.Error())
 			return "", ""
 		}
 		contentType := response.Header.Get("Content-Type")
 		if strings.ToLower(contentType) != "text/html; charset=utf-8" {
-			Log(config.Debug, "Unsupported ContentType when looking for og: url")
+			log(config.Debug, "Unsupported ContentType when looking for og: url")
 			return "", ""
 		}
 		ogUrl, err := GetOgUrl(response.Body, config)
@@ -227,7 +227,7 @@ func TraversePages(path string, config *Config, handler func(int, PostData)) {
 		if after != "" {
 			link += "&after=" + after
 		}
-		Log(config.Debug, "REQUEST: ", link)
+		log(config.Debug, "REQUEST: ", link)
 		response, err := FetchUrl(link, config.UserAgent, redditClient)
 		check(err, "Cannot get JSON response")
 		defer response.Body.Close()
@@ -269,7 +269,7 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 	// will any post ever get 2B upvotes?
 	// also: default limit is 1 karma point.
 	if post.Ups < config.MinKarma {
-		Log(config.Debug, "Skipped Due to Less Karma:", title,
+		log(config.Debug, "Skipped Due to Less Karma:", title,
 			"| Ups:", post.Ups, "|", post.Url, "\n")
 		fmt.Println()
 		if strings.HasPrefix(config.Sort, "top-") {
@@ -282,12 +282,12 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 	// check if url is image
 	url, extension := CheckImage(post.Url, config, client)
 	if url == "" {
-		Log(config.Debug, "Skip non-imagelike entry: ", title, " | ", post.Url, "\n")
+		log(config.Debug, "Skip non-imagelike entry: ", title, " | ", post.Url, "\n")
 		return
 	}
 	filename := title + " [" + strings.TrimPrefix(post.Name, "t3_") + "]" + extension
-	Log(config.Debug, "URL: ", post.Url, " | Ups:", post.Ups)
-	Log(config.Debug && url != post.Url, "->", url)
+	log(config.Debug, "URL: ", post.Url, " | Ups:", post.Ups)
+	log(config.Debug && url != post.Url, "->", url)
 	fmt.Print(filename)
 	// check if already downloaded file
 	_, err := os.Stat(filename)
