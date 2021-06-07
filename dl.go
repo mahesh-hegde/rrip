@@ -30,6 +30,7 @@ type Config struct {
 	Limit, MaxFiles, MinKarma      int
 	Debug, DryRun                  bool
 	MaxStorage, MaxSize            int64
+	OgType                         string
 }
 
 type PostData struct {
@@ -138,7 +139,7 @@ func HandlePosts(body io.ReadCloser, handler func(int, PostData)) (last string) 
 // if downloadable, return final URL, else return empty string
 // also the extension string that matched
 
-func CheckImage(linkString string) (finalLink string, extension string) {
+func CheckImage(linkString string, config *Config, client *http.Client) (finalLink string, extension string) {
 	var exts = []string{".jpeg", ".gif", ".mp4", ".jpg", ".png"}
 	link, err := url.Parse(linkString)
 	check(err)
@@ -158,6 +159,25 @@ func CheckImage(linkString string) (finalLink string, extension string) {
 			return linkString, ext
 		}
 	}
+
+	// if ogType is given, read the link and get it's og:video or og:image
+	if config.OgType != "" {
+		response, err := FetchUrl(linkString, config.UserAgent, client)
+		Log(config.Debug, "REQUEST PAGE: " + linkString)
+		if err != nil {
+			Log(config.Debug, err.Error())
+			return "", ""
+		}
+		contentType := response.Header.Get("Content-Type")
+		if strings.ToLower(contentType) != "text/html; charset=utf-8" {
+			Log(config.Debug, "Unsupported ContentType when looking for og: url")
+			return "", ""
+		}
+		ogUrl, err := GetOgUrl(response.Body, config)
+		if ogUrl != "" {
+			return CheckImage(ogUrl, config, nil);
+		}
+	}
 	return "", ""
 }
 
@@ -167,11 +187,11 @@ func FetchUrl(url string, userAgent string, client *http.Client) (*http.Response
 	check(err)
 	req.Header.Add("User-Agent", userAgent)
 	// client := &http.Client{}
-	resp, err := client.Do(req)
+	response, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
-	return resp, err
+	return response, err
 }
 
 // downloads all images reachable from reddit.com/<path>.json
@@ -257,7 +277,7 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 	}
 
 	// check if url is image
-	url, extension := CheckImage(post.Url)
+	url, extension := CheckImage(post.Url, config, client)
 	if url == "" {
 		Log(config.Debug, "Skip non-imagelike entry: ", title, " | ", post.Url, "\n")
 		return
@@ -372,6 +392,8 @@ func main() {
 	flag.Int64Var(&config.MaxStorage, "max-storage", -1, "Data usage limit in MB, -1 for no limit")
 	flag.Int64Var(&config.MaxSize, "max-size", -1, "Max size of media file in KB, -1 for no limit")
 	flag.StringVar(&config.Folder, "folder", "", "Target folder name")
+	flag.StringVar(&config.OgType, "og-type", "", "Look Up for an og:property if link itself is not image" +
+			"supported: video, image, any");
 	flag.StringVar(&config.Sort, "sort", "", "Sort: best|hot|new|rising|top-<all|year|month|week|day>")
 	flag.IntVar(&config.MaxFiles, "max", -1, "Max number of files to download (+ve), -1 for no limit")
 	flag.IntVar(&config.MinKarma, "min-karma", 0, "Minimum Karma of the post")
@@ -398,7 +420,11 @@ func main() {
 			fatal("Invalid value for option " + option)
 		}
 	}
-
+	// only few values are supported for config.OgType
+	og := config.OgType
+	if og != "" && og != "video" && og != "image" && og != "any" {
+		fatal("Only supported values for -og-type are image, video and any")
+	}
 	// enable debug output in case of dry run
 	config.Debug = config.Debug || config.DryRun
 
