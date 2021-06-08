@@ -178,8 +178,8 @@ func CheckImage(linkString string, config *Config, client *http.Client) (finalLi
 
 	// if ogType is given, read the link and get it's og:video or og:image
 	if config.OgType != "" {
-		response, err := FetchUrl(linkString, config.UserAgent, client)
 		log(config.Debug, "REQUEST PAGE: " + linkString)
+		response, err := FetchUrl(linkString, config.UserAgent, client)
 		if err != nil {
 			log(config.Debug, err.Error())
 			return "", ""
