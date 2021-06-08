@@ -78,12 +78,14 @@ Usage: reddit-rip <options> <r/subreddit>
 * Pressing Ctrl+C will stop the program only after a file is completely downloaded, in order to avoid saving half-downloaded files. Use -max=<num> to limit number of files
 
 * -d implies -v
-    
+
+* use -log-media-links=filename option with -d (dry run) if you just want to log media URLs and not download them.
+
+* some sites like gfycat don't provide downloadable URLs directly, you might try passing -og-type=video for example, so that the program will try to scrape "og:video" property from the link. Supported options are video, image, or any (first try to find og:video, or fallback to og:image)
+
 * do not rely on -max-storage or -max-size to save data
 
 * I have not tested all combinations of options, you might discover some bugs !!
-
-## FAQ
 
 ## Sample Session
 
