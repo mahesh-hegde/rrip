@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	UserAgent    = "rip for Reddit / Command Line Tool / Linux"
+	UserAgent    = "rip for Reddit / Command Line Tool"
 	DefaultLimit = 100
 )
 
@@ -141,7 +141,8 @@ func Finish(stats *Stats) {
 func HandlePosts(body io.ReadCloser, handler func(int, PostData)) (last string) {
 	dec := json.NewDecoder(body)
 	apiResponse := ApiResponse{}
-	check(dec.Decode(&apiResponse))
+	err := dec.Decode(&apiResponse)
+	check(err)
 	for i, post := range apiResponse.Data.Children {
 		stats.Processed += 1
 		handler(i, post.Data)
@@ -351,6 +352,14 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 	}
 	defer response.Body.Close()
 
+	// check content-type
+	// It's generally rare, but few sites send html from urls that end with gif etc..
+	contentType := response.Header.Get("Content-Type")
+	if !strings.HasPrefix(contentType, "image/") &&
+		!strings.HasPrefix(contentType, "video/") {
+		eprintln("    [Unexpected Content-Type: " + contentType + "]")
+		return
+	}
 	// Give one more chance to exit, before creating the file
 	checkInterrupt()
 
