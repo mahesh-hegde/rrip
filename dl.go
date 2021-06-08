@@ -67,21 +67,35 @@ func either(a, b string) string {
 }
 
 func fatal(val ...interface{}) {
-	fmt.Println(val...)
+	fmt.Fprintln(os.Stderr, val...)
 	os.Exit(1)
 }
 
+// always print user visible info to standard error
+
+func eprintln(vals ...interface{}) {
+	fmt.Fprintln(os.Stderr, vals...)
+}
+
+func eprintf(format string, vals ...interface{}) {
+	fmt.Fprintf(os.Stderr, format, vals...)
+}
+
+func eprint(vals ...interface{}) {
+	fmt.Fprint(os.Stderr, vals...)
+}
+
 // unreadable code but saved my keyboard
-func check(e error, extra ...string) {
+func check(e error, extra ...interface{}) {
 	if e != nil {
-		fmt.Println(extra)
+		fmt.Fprintln(os.Stderr, extra...)
 		fatal(e.Error())
 	}
 }
 
 func log(debug bool, vals ...interface{}) {
 	if debug {
-		fmt.Fprintln(os.Stdout, vals...)
+		fmt.Fprintln(os.Stderr, vals...)
 	}
 }
 
@@ -107,16 +121,16 @@ func size(bytes int64) string {
 }
 
 func Finish(stats *Stats) {
-	fmt.Println(strings.Repeat("-", 20))
-	fmt.Println("Processed Posts: ", stats.Processed)
-	fmt.Println("Already Downloaded: ", stats.Repeated)
-	fmt.Println("Failed: ", stats.Failed)
-	fmt.Println("Saved: ", stats.Saved)
-	fmt.Println("Other: ",
+	eprintln(strings.Repeat("-", 20))
+	eprintln("Processed Posts: ", stats.Processed)
+	eprintln("Already Downloaded: ", stats.Repeated)
+	eprintln("Failed: ", stats.Failed)
+	eprintln("Saved: ", stats.Saved)
+	eprintln("Other: ",
 		stats.Processed-stats.Failed-stats.Repeated-stats.Saved)
-	fmt.Println(strings.Repeat("-", 20))
-	fmt.Println("Approx. Storage Used:", size(stats.CopiedBytes))
-	fmt.Println(strings.Repeat("-", 20))
+	eprintln(strings.Repeat("-", 20))
+	eprintln("Approx. Storage Used:", size(stats.CopiedBytes))
+	eprintln(strings.Repeat("-", 20))
 	os.Exit(0)
 }
 
@@ -253,7 +267,7 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 		select {
 		case sig := <-interrupt:
 			if sig == os.Interrupt {
-				fmt.Println(" Interrupt Received, Exit")
+				eprintln(" Interrupt Received, Exit")
 				Finish(&stats)
 			}
 		default:
@@ -273,9 +287,9 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 	if post.Ups < config.MinKarma {
 		log(config.Debug, "Skipped Due to Less Karma:", title,
 			"| Ups:", post.Ups, "|", post.Url, "\n")
-		fmt.Println()
+		eprintln()
 		if strings.HasPrefix(config.Sort, "top-") {
-			fmt.Println("Skipping posts with less points, since sort=" + config.Sort)
+			eprintln("Skipping posts with less points, since sort=" + config.Sort)
 			Finish(&stats)
 		}
 		return
@@ -297,12 +311,12 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 	if config.MediaLinksFile != nil {
 		fmt.Fprintln(config.MediaLinksFile, url)
 	}
-	fmt.Print(filename)
+	eprint(filename)
 	// check if already downloaded file
 	_, err := os.Stat(filename)
 	if err == nil {
-		fmt.Println("    [Already Downloaded]")
-		fmt.Println()
+		eprintln("    [Already Downloaded]")
+		eprintln()
 		stats.Repeated += 1
 		return
 	}
@@ -310,8 +324,8 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 	// If dry run, don't fetch media, or create a file
 	// but you still have to increase number of files for config.MaxFiles to work
 	if config.DryRun {
-		fmt.Println("    [Dry Run]")
-		fmt.Println()
+		eprintln("    [Dry Run]")
+		eprintln()
 		stats.Saved += 1
 		if stats.Saved == config.MaxFiles {
 			Finish(&stats)
@@ -325,8 +339,8 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 	// Common error handling code
 	netError := func(kind string) {
 		stats.Failed += 1
-		fmt.Println("    [" + kind + " Error: " + err.Error() + "]")
-		fmt.Println()
+		eprintln("    [" + kind + " Error: " + err.Error() + "]")
+		eprintln()
 		return
 	}
 	// Fetch
@@ -348,22 +362,22 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 	skipDueToSize = skipDueToSize ||
 		(config.MaxStorage != -1 && length == -1)
 	if skipDueToSize {
-		fmt.Printf("    [Too Large: %s]\n", size(length))
-		fmt.Println()
+		eprintf("    [Too Large: %s]\n", size(length))
+		eprintln()
 		return
 	}
 	// if file length will go past the storage limit, finish 
 	if config.MaxStorage != -1 && config.MaxStorage < length+stats.CopiedBytes {
-		fmt.Printf("    [%s | Crosses storage limit]\n", size(length))
-		fmt.Println()
+		eprintf("    [%s | Crosses storage limit]\n", size(length))
+		eprintln()
 		Finish(&stats)
 	}
 
 	// Create file
 	output, err = os.Create(filename)
 	if err != nil {
-		fmt.Println("    [Cannot create file]")
-		fmt.Println()
+		eprintln("    [Cannot create file]")
+		eprintln()
 		stats.Failed += 1
 		return
 	}
@@ -384,14 +398,26 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 
 	// Transfer success I hope
 	// write stats
-	fmt.Printf("    [Done: %s]\n", size(n))
-	fmt.Println()
+	eprintf("    [Done: %s]\n", size(n))
+	eprintln()
 	stats.Saved += 1
 	if stats.Saved == config.MaxFiles {
 		Finish(&stats)
 	}
 
 	return
+}
+
+func createLinksFile(filename string) *os.File {
+	if filename == "" {
+		return nil
+	}
+	if filename == "-" || filename == "stdout" {
+		return os.Stdout
+	}
+	output, err := os.Create(filename)
+	check(err)
+	return output
 }
 
 func main() {
@@ -411,8 +437,8 @@ func main() {
 	flag.StringVar(&config.Folder, "folder", "", "Target folder name")
 	flag.StringVar(&logMediaLinksTo, "log-media-links", "", "Log media links to given file")
 	flag.StringVar(&logPostLinksTo, "log-post-links", "", "Log all links found in posts to given file")
-	flag.StringVar(&config.OgType, "og-type", "", "Look Up for an og:property if link itself is not image" +
-			"supported: video, image, any");
+	flag.StringVar(&config.OgType, "og-type", "", "Look Up for a media link in page's og:property" +
+			" if link itself is not image/video (experimental) supported: video, image, any");
 	flag.StringVar(&config.Sort, "sort", "", "Sort: best|hot|new|rising|top-<all|year|month|week|day>")
 	flag.IntVar(&config.MaxFiles, "max", -1, "Max number of files to download (+ve), -1 for no limit")
 	flag.IntVar(&config.MinKarma, "min-karma", 0, "Minimum Karma of the post")
@@ -420,19 +446,18 @@ func main() {
 	flag.Parse()
 	args := flag.Args()
 	if len(args) != 1 || help {
-		fmt.Fprintf(os.Stdout, "Usage: %s <options> <r/subreddit>\n", os.Args[0])
+		eprintf("Usage: %s <options> <r/subreddit>\n", os.Args[0])
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
 
-	if logMediaLinksTo != "" {
-		config.MediaLinksFile, err = os.Create(logMediaLinksTo)
-		check(err)
+	if logPostLinksTo != "" && logPostLinksTo == logMediaLinksTo {
+		fatal("Can't log both post and media links to same file")
 	}
-	if logPostLinksTo != "" {
-		config.PostLinksFile, err = os.Create(logPostLinksTo)
-		check(err)
-	}
+
+	config.PostLinksFile = createLinksFile(logPostLinksTo)
+	config.MediaLinksFile = createLinksFile(logMediaLinksTo)
+
 	path := strings.TrimSuffix(args[0], "/")
 
 	// validate some arguments

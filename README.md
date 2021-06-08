@@ -17,10 +17,14 @@ It has a few configurable options as well
 
 * If the image / gif is already downloaded, skip it.
 
+* Can log final URLs to a file.
+
+* Primitive support for scraping pages that don't end with media extensions, using -og-type flag.
+
 ## Build
 Assuming you have Go toolchain installed
 
-There are no dependencies other than standard library
+depends on html parser: golang.org/x/net/html
 
 ```
 git clone --depth=1 https://github.com/mahesh-hegde/reddit-rip.git
@@ -48,6 +52,10 @@ Usage: reddit-rip <options> <r/subreddit>
         Show this help message
   -l int
         Number of entries to fetch in one API request (devel) (default 100)
+  -log-media-links string
+        Log media links to given file
+  -log-post-links string
+        Log all links found in posts to given file
   -max int
         Max number of files to download (+ve), -1 for no limit (default -1)
   -max-size int
@@ -56,10 +64,12 @@ Usage: reddit-rip <options> <r/subreddit>
         Data usage limit in MB, -1 for no limit (default -1)
   -min-karma int
         Minimum Karma of the post
+  -og-type string
+        Look Up for a media link in page's og:property if link itself is not image/video (experimental) supported: video, image, any
   -sort string
         Sort: best|hot|new|rising|top-<all|year|month|week|day>
   -useragent string
-        UserAgent string (default "reddit-dl / Command Line Tool For Linux")
+        UserAgent string (default "rip for Reddit / Command Line Tool / Linux")
   -v    Enable verbose output
 ```
 
@@ -70,8 +80,10 @@ Usage: reddit-rip <options> <r/subreddit>
 * -d implies -v
     
 * do not rely on -max-storage or -max-size to save data
-    
+
 * I have not tested all combinations of options, you might discover some bugs !!
+
+## FAQ
 
 ## Sample Session
 
