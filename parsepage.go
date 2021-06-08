@@ -60,7 +60,6 @@ func GetOgUrl(source io.Reader, config *Config) (string, error) {
 			link := AttrValue(metaTag, "", "content")
 			return link, nil
 		}
-		// if any type is preferred, try again with other type
 	}
 }
 

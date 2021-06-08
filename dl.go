@@ -169,6 +169,7 @@ func CheckImage(linkString string, config *Config, client *http.Client) (finalLi
 			log(config.Debug, err.Error())
 			return "", ""
 		}
+		defer response.Body.Close()
 		contentType := response.Header.Get("Content-Type")
 		if strings.ToLower(contentType) != "text/html; charset=utf-8" {
 			log(config.Debug, "Unsupported ContentType when looking for og: url")
