@@ -110,11 +110,8 @@ func size(bytes int64) string {
 
 	for i, sz := range sizes {
 		if bytes > sz {
-			units := bytes / sz
-			if (bytes % sz) >= (sz / 2) {
-				units += 1
-			}
-			return strconv.FormatInt(units, 10) + names[i]
+			units := float64(bytes) / float64(sz)
+			return strconv.FormatFloat(units, 'f', 1, 64) + names[i]
 		}
 	}
 	return strconv.FormatInt(bytes, 10) + "B"
