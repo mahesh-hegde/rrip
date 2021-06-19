@@ -339,6 +339,14 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 		stats.Failed += 1
 		eprintln("    [" + kind + " Error: " + err.Error() + "]")
 		eprintln()
+		if output != nil {
+			// transfer errors when file was already created
+			log(config.Debug, "Try remove file: ", filename)
+			rmErr := os.Remove(filename)
+			if rmErr != nil {
+				log(config.Debug, "Error removing file")
+			}
+		}
 		return
 	}
 	// Fetch
