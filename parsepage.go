@@ -3,27 +3,27 @@
 package main
 
 import (
-	"io"
 	"errors"
 	"golang.org/x/net/html"
+	"io"
 )
 
 func NextMetaTag(tok *html.Tokenizer) (html.Token, error) {
 	for {
 		tt := tok.Next()
 		switch tt {
-			case html.ErrorToken:
-				return html.Token{}, tok.Err()
-			case html.SelfClosingTagToken, html.StartTagToken:
-				token := tok.Token()
-				if token.Data == "meta" {
-					return token, nil
-				}
-				if token.Data == "body" {
-					return token, io.EOF
-				}
-			default:
-				continue;
+		case html.ErrorToken:
+			return html.Token{}, tok.Err()
+		case html.SelfClosingTagToken, html.StartTagToken:
+			token := tok.Token()
+			if token.Data == "meta" {
+				return token, nil
+			}
+			if token.Data == "body" {
+				return token, io.EOF
+			}
+		default:
+			continue
 		}
 	}
 }
@@ -56,10 +56,9 @@ func GetOgUrl(source io.Reader, config *Config) (string, error) {
 		}
 		prop := AttrValue(metaTag, "", "property")
 		if prop == reqProp ||
-				prop == "og:image" && config.OgType == "any" {
+			prop == "og:image" && config.OgType == "any" {
 			link := AttrValue(metaTag, "", "content")
 			return link, nil
 		}
 	}
 }
-

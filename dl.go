@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/url"
@@ -11,7 +12,6 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
-	"html"
 )
 
 const (
@@ -24,11 +24,15 @@ type Stats struct {
 	CopiedBytes                        int64
 }
 
+// characters not allowed in some filesystems
+// and what to replace them with
+var specialChars = "?/:<>'\"|"
+
 // (mostly) command line options
 type Config struct {
 	After, Sort, UserAgent, Folder string
 	Limit, MaxFiles, MinKarma      int
-	Debug, DryRun                  bool
+	Debug, DryRun, NoSpecialChars  bool
 	MaxStorage, MaxSize            int64
 	OgType                         string
 	PostLinksFile, MediaLinksFile  io.Writer
@@ -104,7 +108,7 @@ func size(bytes int64) string {
 	names := []string{"GB", "MB", "KB"}
 
 	// content length in http response can be -1
-	if (bytes == -1) {
+	if bytes == -1 {
 		return "Unknown length"
 	}
 
@@ -160,11 +164,11 @@ func CheckImage(linkString string, config *Config, client *http.Client) (finalLi
 
 	// imgur gifv links are generally MP4
 	if (link.Host == "i.imgur.com" || link.Host == "imgur.com") &&
-			strings.HasSuffix(path, ".gifv") {
-				trimmed := strings.TrimSuffix(path, ".gifv")
-				link.Path = trimmed + ".mp4"
-				link.Host = "i.imgur.com"
-				return link.String(), ".mp4"
+		strings.HasSuffix(path, ".gifv") {
+		trimmed := strings.TrimSuffix(path, ".gifv")
+		link.Path = trimmed + ".mp4"
+		link.Host = "i.imgur.com"
+		return link.String(), ".mp4"
 	}
 
 	for _, ext := range exts {
@@ -175,7 +179,7 @@ func CheckImage(linkString string, config *Config, client *http.Client) (finalLi
 
 	// if ogType is given, read the link and get it's og:video or og:image
 	if config.OgType != "" {
-		log(config.Debug, "REQUEST PAGE: " + linkString)
+		log(config.Debug, "REQUEST PAGE: "+linkString)
 		response, err := FetchUrl(linkString, config.UserAgent, client)
 		if err != nil {
 			log(config.Debug, err.Error())
@@ -189,7 +193,7 @@ func CheckImage(linkString string, config *Config, client *http.Client) (finalLi
 		}
 		ogUrl, err := GetOgUrl(response.Body, config)
 		if ogUrl != "" {
-			return CheckImage(ogUrl, config, nil);
+			return CheckImage(ogUrl, config, nil)
 		}
 	}
 	return "", ""
@@ -304,6 +308,16 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 		return
 	}
 	filename := title + " [" + strings.TrimPrefix(post.Name, "t3_") + "]" + extension
+	charsToRemove := "/"
+	if config.NoSpecialChars {
+		charsToRemove = specialChars
+	}
+	filename = strings.Map(func(r rune) rune {
+		if strings.ContainsRune(charsToRemove, r) {
+			return -1
+		}
+		return r
+	}, filename)
 	log(config.Debug, "URL: ", post.Url, " | Ups:", post.Ups)
 	log(config.Debug && url != post.Url, "->", url)
 	if config.MediaLinksFile != nil {
@@ -380,7 +394,7 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 		eprintln()
 		return
 	}
-	// if file length will go past the storage limit, finish 
+	// if file length will go past the storage limit, finish
 	if config.MaxStorage != -1 && config.MaxStorage < length+stats.CopiedBytes {
 		eprintf("    [%s | Crosses storage limit]\n", size(length))
 		eprintln()
@@ -444,6 +458,8 @@ func main() {
 	// option parsing
 	flag.BoolVar(&config.Debug, "v", false, "Enable verbose output")
 	flag.BoolVar(&config.DryRun, "d", false, "DryRun i.e just print urls and names")
+	flag.BoolVar(&config.NoSpecialChars, "no-special-chars", false,
+		"Removes these characters from the filename: "+specialChars)
 	flag.StringVar(&config.After, "after", "", "Get posts after the given ID")
 	flag.StringVar(&config.UserAgent, "useragent", UserAgent, "UserAgent string")
 	flag.Int64Var(&config.MaxStorage, "max-storage", -1, "Data usage limit in MB, -1 for no limit")
@@ -451,8 +467,8 @@ func main() {
 	flag.StringVar(&config.Folder, "folder", "", "Target folder name")
 	flag.StringVar(&logMediaLinksTo, "log-media-links", "", "Log media links to given file")
 	flag.StringVar(&logPostLinksTo, "log-post-links", "", "Log all links found in posts to given file")
-	flag.StringVar(&config.OgType, "og-type", "", "Look Up for a media link in page's og:property" +
-			" if link itself is not image/video (experimental) supported: video, image, any");
+	flag.StringVar(&config.OgType, "og-type", "", "Look Up for a media link in page's og:property"+
+		" if link itself is not image/video (experimental) supported: video, image, any")
 	flag.StringVar(&config.Sort, "sort", "", "Sort: best|hot|new|rising|top-<all|year|month|week|day>")
 	flag.IntVar(&config.MaxFiles, "max", -1, "Max number of files to download (+ve), -1 for no limit")
 	flag.IntVar(&config.MinKarma, "min-karma", 0, "Minimum Karma of the post")
