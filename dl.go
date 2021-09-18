@@ -288,8 +288,7 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 	// also: default limit is 1 karma point.
 	if post.Ups < config.MinKarma {
 		log(config.Debug, "Skipped Due to Less Karma:", title,
-			"| Ups:", post.Ups, "|", post.Url, "\n")
-		eprintln()
+			"| Ups:", post.Ups, "|", post.Url, "\n\n")
 		if strings.HasPrefix(config.Sort, "top-") {
 			eprintln("Skipping posts with less points, since sort=" + config.Sort)
 			Finish(&stats)
@@ -327,8 +326,7 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 	// check if already downloaded file
 	_, err := os.Stat(filename)
 	if err == nil {
-		eprintln("    [Already Downloaded]")
-		eprintln()
+		eprint("    [Already Downloaded]\n\n")
 		stats.Repeated += 1
 		return
 	}
@@ -336,8 +334,7 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 	// If dry run, don't fetch media, or create a file
 	// but you still have to increase number of files for config.MaxFiles to work
 	if config.DryRun {
-		eprintln("    [Dry Run]")
-		eprintln()
+		eprint("    [Dry Run]\n\n")
 		stats.Saved += 1
 		if stats.Saved == config.MaxFiles {
 			Finish(&stats)
