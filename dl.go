@@ -55,13 +55,21 @@ type ApiResponse struct {
 	Data ApiData
 }
 
-// Entire Program is single threaded
+// Entire Program uses same config and stats
 // Passing it around is tedious
+// currently only one thread downloads
+
 var stats Stats
+var config Config
+
 
 // similarly for the interrupt channel
-
 var interrupt chan os.Signal
+var completion = make(chan bool)
+
+// filename to remove if interrupt received
+// race conditions with this are generally harmless
+var downloadingFilename string
 
 func either(a, b string) string {
 	if a == "" {
@@ -76,7 +84,6 @@ func fatal(val ...interface{}) {
 }
 
 // always print user visible info to standard error
-
 func eprintln(vals ...interface{}) {
 	fmt.Fprintln(os.Stderr, vals...)
 }
@@ -121,7 +128,7 @@ func size(bytes int64) string {
 	return strconv.FormatInt(bytes, 10) + "B"
 }
 
-func Finish(stats *Stats) {
+func PrintStat(stats *Stats) {
 	eprintln(strings.Repeat("-", 20))
 	eprintln("Processed Posts: ", stats.Processed)
 	eprintln("Already Downloaded: ", stats.Repeated)
@@ -132,7 +139,11 @@ func Finish(stats *Stats) {
 	eprintln(strings.Repeat("-", 20))
 	eprintln("Approx. Storage Used:", size(stats.CopiedBytes))
 	eprintln(strings.Repeat("-", 20))
-	os.Exit(0)
+}
+
+func Finish(stats *Stats) {
+	PrintStat(stats)
+	completion <- true
 }
 
 // body is the response body which contains json
@@ -265,18 +276,6 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 	// check that after every download
 	// if it's pressed then exit
 
-	checkInterrupt := func() {
-		select {
-		case sig := <-interrupt:
-			if sig == os.Interrupt {
-				eprintln(" Interrupt Received, Exit")
-				Finish(&stats)
-			}
-		default:
-			// do nothing
-		}
-	}
-	checkInterrupt()
 	// process title, truncate if too long
 	title := strings.TrimSpace(strings.ReplaceAll(post.Title, "/", "|"))
 	title = html.UnescapeString(title) // &amp; etc.. are escaped in json
@@ -348,8 +347,7 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 	// Common error handling code
 	netError := func(kind string) {
 		stats.Failed += 1
-		eprintln("    [" + kind + " Error: " + err.Error() + "]")
-		eprintln()
+		eprintf("    [" + kind + " Error: " + err.Error() + "]\n\n")
 		if output != nil {
 			// transfer errors when file was already created
 			log(config.Debug, "Try remove file: ", filename)
@@ -376,8 +374,6 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 		eprintln("    [Unexpected Content-Type: " + contentType + "]")
 		return
 	}
-	// Give one more chance to exit, before creating the file
-	checkInterrupt()
 
 	length := response.ContentLength
 	// If larger or unknown length, skip
@@ -387,22 +383,24 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 	skipDueToSize = skipDueToSize ||
 		(config.MaxStorage != -1 && length == -1)
 	if skipDueToSize {
-		eprintf("    [Too Large: %s]\n", size(length))
-		eprintln()
+		eprintf("    [Too Large: %s]\n\n", size(length))
 		return
 	}
 	// if file length will go past the storage limit, finish
 	if config.MaxStorage != -1 && config.MaxStorage < length+stats.CopiedBytes {
-		eprintf("    [%s | Crosses storage limit]\n", size(length))
-		eprintln()
+		eprintf("    [%s | Crosses storage limit]\n\n", size(length))
 		Finish(&stats)
 	}
 
 	// Create file
+	log(config.Debug, "  [Creating file]")
+	downloadingFilename = filename
+	defer func() {
+		downloadingFilename = ""
+	}()
 	output, err = os.Create(filename)
 	if err != nil {
-		eprintln("    [Cannot create file]")
-		eprintln()
+		eprintf("    [Cannot create file]\n\n")
 		stats.Failed += 1
 		return
 	}
@@ -423,13 +421,11 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 
 	// Transfer success I hope
 	// write stats
-	eprintf("    [Done: %s]\n", size(n))
-	eprintln()
+	eprintf("    [Done: %s]\n\n", size(n))
 	stats.Saved += 1
 	if stats.Saved == config.MaxFiles {
 		Finish(&stats)
 	}
-
 	return
 }
 
@@ -543,7 +539,20 @@ func main() {
 	// create a client for all image downloader connections
 	client := &http.Client{}
 	// start downloading
-	TraversePages(path, &config, func(i int, post PostData) {
+
+	go TraversePages(path, &config, func(i int, post PostData) {
 		DownloadLink(i, post, &config, client)
 	})
+
+	select {
+	case <-interrupt:
+		eprintln("Interrupt received, Exiting...")
+		if (downloadingFilename != "") {
+			eprintf("Removing possibly incomplete file %s\n", downloadingFilename)
+			os.Remove(downloadingFilename)
+		}
+		PrintStat(&stats)
+	case <-completion:
+		os.Exit(0)
+	}
 }
