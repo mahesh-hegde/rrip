@@ -110,6 +110,7 @@ func log(debug bool, vals ...interface{}) {
 	}
 }
 
+// return size as human readable string
 func size(bytes int64) string {
 	sizes := []int64{1000 * 1000 * 1000, 1000 * 1000, 1000}
 	names := []string{"GB", "MB", "KB"}
@@ -128,7 +129,7 @@ func size(bytes int64) string {
 	return strconv.FormatInt(bytes, 10) + "B"
 }
 
-func PrintStat(stats *Stats) {
+func PrintStat() {
 	eprintln(strings.Repeat("-", 20))
 	eprintln("Processed Posts: ", stats.Processed)
 	eprintln("Already Downloaded: ", stats.Repeated)
@@ -141,8 +142,8 @@ func PrintStat(stats *Stats) {
 	eprintln(strings.Repeat("-", 20))
 }
 
-func Finish(stats *Stats) {
-	PrintStat(stats)
+func Finish() {
+	PrintStat()
 	completion <- true
 }
 
@@ -150,14 +151,14 @@ func Finish(stats *Stats) {
 // handler is run for every post entry unless handler exits early
 // returns last posts's id ('name' attribute in json)
 // which is useful to fetch next page
-func HandlePosts(body io.ReadCloser, handler func(int, PostData)) (last string) {
+func HandlePosts(body io.ReadCloser, handler func(PostData)) (last string) {
 	dec := json.NewDecoder(body)
 	apiResponse := ApiResponse{}
 	err := dec.Decode(&apiResponse)
 	check(err)
-	for i, post := range apiResponse.Data.Children {
+	for _, post := range apiResponse.Data.Children {
 		stats.Processed += 1
-		handler(i, post.Data)
+		handler(post.Data)
 		last = post.Data.Name
 	}
 	return last
@@ -167,7 +168,7 @@ func HandlePosts(body io.ReadCloser, handler func(int, PostData)) (last string) 
 // if downloadable, return final URL, else return empty string
 // also the extension string that matched
 
-func CheckImage(linkString string, config *Config, client *http.Client) (finalLink string, extension string) {
+func CheckImage(linkString string) (finalLink string, extension string) {
 	var exts = []string{".jpeg", ".gif", ".mp4", ".jpg", ".png"}
 	link, err := url.Parse(linkString)
 	check(err)
@@ -175,7 +176,7 @@ func CheckImage(linkString string, config *Config, client *http.Client) (finalLi
 
 	// imgur gifv links are generally MP4
 	if (link.Host == "i.imgur.com" || link.Host == "imgur.com") &&
-		strings.HasSuffix(path, ".gifv") {
+			strings.HasSuffix(path, ".gifv") {
 		trimmed := strings.TrimSuffix(path, ".gifv")
 		link.Path = trimmed + ".mp4"
 		link.Host = "i.imgur.com"
@@ -191,7 +192,7 @@ func CheckImage(linkString string, config *Config, client *http.Client) (finalLi
 	// if ogType is given, read the link and get it's og:video or og:image
 	if config.OgType != "" {
 		log(config.Debug, "REQUEST PAGE: "+linkString)
-		response, err := FetchUrl(linkString, config.UserAgent, client)
+		response, err := FetchUrl(linkString)
 		if err != nil {
 			log(config.Debug, err.Error())
 			return "", ""
@@ -202,21 +203,21 @@ func CheckImage(linkString string, config *Config, client *http.Client) (finalLi
 			log(config.Debug, "Unsupported ContentType when looking for og: url")
 			return "", ""
 		}
-		ogUrl, err := GetOgUrl(response.Body, config)
+		ogUrl, err := GetOgUrl(response.Body)
 		if ogUrl != "" {
-			return CheckImage(ogUrl, config, nil)
+			return CheckImage(ogUrl)
 		}
 	}
 	return "", ""
 }
 
 // Returns Resp : *http.Response
-func FetchUrl(url string, userAgent string, client *http.Client) (*http.Response, error) {
+func FetchUrl(url string) (*http.Response, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	check(err)
-	req.Header.Add("User-Agent", userAgent)
+	req.Header.Add("User-Agent", config.UserAgent)
 	// client := &http.Client{}
-	response, err := client.Do(req)
+	response, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +225,7 @@ func FetchUrl(url string, userAgent string, client *http.Client) (*http.Response
 }
 
 // downloads all images reachable from reddit.com/<path>.json
-func TraversePages(path string, config *Config, handler func(int, PostData)) {
+func TraversePages(path string, handler func(PostData)) {
 	target := "https://reddit.com/" + strings.TrimSuffix(path, "/")
 
 	// so that we don't modify at a distance
@@ -247,17 +248,13 @@ func TraversePages(path string, config *Config, handler func(int, PostData)) {
 	if topBy != "" {
 		target += "&t=" + topBy
 	}
-	// create client
-	// http.Client caches connections
-	// that's why preferable to use same client
-	redditClient := &http.Client{}
 	for {
 		var link = target // final link
 		if after != "" {
 			link += "&after=" + after
 		}
 		log(config.Debug, "REQUEST: ", link)
-		response, err := FetchUrl(link, config.UserAgent, redditClient)
+		response, err := FetchUrl(link)
 		check(err, "Cannot get JSON response")
 		defer response.Body.Close()
 
@@ -265,17 +262,12 @@ func TraversePages(path string, config *Config, handler func(int, PostData)) {
 		after = HandlePosts(response.Body, handler)
 		if stats.Processed == processed {
 			// no items were got in this page
-			Finish(&stats)
+			Finish()
 		}
 	}
 }
 
-func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
-	// signal handling:
-	// when ctrl+c is pressed, it should be buffered to a channel
-	// check that after every download
-	// if it's pressed then exit
-
+func DownloadLink(post PostData, client *http.Client) {
 	// process title, truncate if too long
 	title := strings.TrimSpace(strings.ReplaceAll(post.Title, "/", "|"))
 	title = html.UnescapeString(title) // &amp; etc.. are escaped in json
@@ -290,7 +282,7 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 			"| Ups:", post.Ups, "|", post.Url, "\n\n")
 		if strings.HasPrefix(config.Sort, "top-") {
 			eprintln("Skipping posts with less points, since sort=" + config.Sort)
-			Finish(&stats)
+			Finish()
 		}
 		return
 	}
@@ -300,7 +292,7 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 		fmt.Fprintln(config.PostLinksFile, post.Url)
 	}
 	// check if url is image
-	url, extension := CheckImage(post.Url, config, client)
+	url, extension := CheckImage(post.Url)
 	if url == "" {
 		log(config.Debug, "Skip non-imagelike entry: ", title, " | ", post.Url, "\n")
 		return
@@ -336,7 +328,7 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 		eprint("    [Dry Run]\n\n")
 		stats.Saved += 1
 		if stats.Saved == config.MaxFiles {
-			Finish(&stats)
+			Finish()
 		}
 		return
 	}
@@ -359,7 +351,7 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 		return
 	}
 	// Fetch
-	response, err := FetchUrl(url, config.UserAgent, client)
+	response, err := FetchUrl(url)
 	if err != nil {
 		netError("Request ")
 		return
@@ -389,7 +381,7 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 	// if file length will go past the storage limit, finish
 	if config.MaxStorage != -1 && config.MaxStorage < length+stats.CopiedBytes {
 		eprintf("    [%s | Crosses storage limit]\n\n", size(length))
-		Finish(&stats)
+		Finish()
 	}
 
 	// Create file
@@ -424,7 +416,7 @@ func DownloadLink(_ int, post PostData, config *Config, client *http.Client) {
 	eprintf("    [Done: %s]\n\n", size(n))
 	stats.Saved += 1
 	if stats.Saved == config.MaxFiles {
-		Finish(&stats)
+		Finish()
 	}
 	return
 }
@@ -442,7 +434,6 @@ func createLinksFile(filename string) *os.File {
 }
 
 func main() {
-	config := Config{}
 	help := false
 	// whether help option is provided
 	flag.BoolVar(&help, "help", false, "Show this help message")
@@ -540,8 +531,8 @@ func main() {
 	client := &http.Client{}
 	// start downloading
 
-	go TraversePages(path, &config, func(i int, post PostData) {
-		DownloadLink(i, post, &config, client)
+	go TraversePages(path, func(post PostData) {
+		DownloadLink(post, client)
 	})
 
 	select {
@@ -551,7 +542,7 @@ func main() {
 			eprintf("Removing possibly incomplete file %s\n", downloadingFilename)
 			os.Remove(downloadingFilename)
 		}
-		PrintStat(&stats)
+		PrintStat()
 	case <-completion:
 		os.Exit(0)
 	}

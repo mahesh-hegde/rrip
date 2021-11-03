@@ -39,7 +39,7 @@ func AttrValue(token html.Token, ns, key string) string {
 
 // ogType can be "video", "image", or "any"
 
-func GetOgUrl(source io.Reader, config *Config) (string, error) {
+func GetOgUrl(source io.Reader) (string, error) {
 	tokenizer := html.NewTokenizer(source)
 	reqProp := "og:" + config.OgType
 	if config.OgType == "any" {
