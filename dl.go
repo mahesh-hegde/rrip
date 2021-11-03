@@ -212,8 +212,8 @@ func CheckImage(linkString string) (finalLink string, extension string) {
 }
 
 // Returns Resp : *http.Response
-func FetchUrl(url string) (*http.Response, error) {
-	req, err := http.NewRequest("GET", url, nil)
+func FetchUrlWithMethod(url, method string) (*http.Response, error) {
+	req, err := http.NewRequest(method, url, nil)
 	check(err)
 	req.Header.Add("User-Agent", config.UserAgent)
 	// client := &http.Client{}
@@ -222,6 +222,10 @@ func FetchUrl(url string) (*http.Response, error) {
 		return nil, err
 	}
 	return response, err
+}
+
+func FetchUrl(url string) (*http.Response, error) {
+	return FetchUrlWithMethod(url, "GET")
 }
 
 // downloads all images reachable from reddit.com/<path>.json
@@ -351,7 +355,7 @@ func DownloadLink(post PostData, client *http.Client) {
 		return
 	}
 	// Fetch
-	response, err := FetchUrl(url)
+	response, err := FetchUrlWithMethod(url, "HEAD")
 	if err != nil {
 		netError("Request ")
 		return
@@ -398,8 +402,16 @@ func DownloadLink(post PostData, client *http.Client) {
 	}
 	defer output.Close()
 
+	// do a GET request
+	fullResponse, err := FetchUrl(url)
+	if err != nil {
+		netError("Request ")
+		return
+	}
+	defer fullResponse.Body.Close()
+
 	// Copy
-	n, err := io.Copy(output, response.Body)
+	n, err := io.Copy(output, fullResponse.Body)
 
 	// add n to how much diskspace is consumed even if there's an error
 	// because it would give a more appropriate approximation of bandwidth consumption
