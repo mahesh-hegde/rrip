@@ -34,11 +34,8 @@ go build
 
 your executable is "reddit-rip" or "reddit-rip.exe" depending on OS, saved in same folder.
 
-## Prebuilt binaries
-
-If you cannot build or don't want to build, look for binary releases in [releases section](https://github.com/mahesh-hegde/reddit-rip/releases/)
-
-*Those executables may not be up-to-date.*
+## Note about windows
+I wrote this on Linux. May not work well on Windows. A best-effort default option is enabled to sanitize filenames so that they can be saved on Windows / Android. But don't blame me if you face some quirks of Windows OS. 
 
 ## Usage
 ```
@@ -68,14 +65,14 @@ Usage: reddit-rip <options> <r/subreddit>
         Look Up for a media link in page's og:property if link itself is not image/video (experimental) supported: video, image, any
   -sort string
         Sort: best|hot|new|rising|top-<all|year|month|week|day>
+  -special-chars
+        Allow all characters in filenames except / and \, And windows-special filenames like NUL
   -useragent string
-        UserAgent string (default "rip for Reddit / Command Line Tool / Linux")
+        UserAgent string (default "rip for Reddit / Command Line Tool")
   -v    Enable verbose output
 ```
 
 **Note:**
-
-* Pressing Ctrl+C will stop the program only after a file is completely downloaded, in order to avoid saving half-downloaded files. Use -max=<num> to limit number of files
 
 * -d implies -v
 
@@ -83,60 +80,61 @@ Usage: reddit-rip <options> <r/subreddit>
 
 * some sites like gfycat don't provide downloadable URLs directly, you might try passing -og-type=video for example, so that the program will try to scrape "og:video" property from the link. Supported options are video, image, or any (first try to find og:video, or fallback to og:image)
 
-* do not rely on -max-storage or -max-size to save data
-
 * I have not tested all combinations of options, you might discover some bugs !!
 
 ## Sample Session
 
 ```
-$ reddit-rip -sort=top-all -max-size=200 -max=15 r/CoolGuides
-Five Demands, Not One Less. End Police Brutality. [gvf93v].png    [Too Large: 270KB]
+$ reddit-rip -max-size=600 -max=20 r/LogicGateMemes              Logic Gates [ffbsit].jpg    [Done: 121.0KB]
 
-Which waters to avoid by region [kxlyl4].jpg    [Done: 189KB]
+Close enough [es6njb].jpg    [Done: 51.2KB]
 
-Marginal Tax [e1w58y].jpg    [Done: 98KB]
+Well, technically… [er9r6y].jpg    [Done: 158.5KB]
 
-Price and service comparison of the biggest shipping orgs in the US. [ibhb4l].jpg    [Done: 121KB]
+Naming Conventions [epqho9].jpg    [Done: 98.8KB]
 
-How Masks And Social Distancing Works [hpamws].jpg    [Done: 111KB]
+Elon Mux [ekysjs].jpg    [Done: 6.2KB]
 
-How paint can change a room [g8up0b].jpg    [Done: 110KB]
+NOR Flag [ekm2ms].jpg    [Done: 187.0KB]
 
-The history of confederate flags. [hakuc7].jpg    [Done: 81KB]
+We have to prepare boys [ekc3d8].png    [Done: 483.2KB]
 
-How to resist [dg83vg].png    [Too Large: 565KB]
+Romeo and Juliet [eh1m2j].jpg    [Done: 143.0KB]
 
-U.S. Flag but each star is scaled proportionally to their state’s population, in roughly it’s geographical position. [kyeej0].jpg    [Done: 158KB]
+That extra input is important! [dztgzg].jpg    [Done: 137.9KB]
 
-How gerrymandering works [j0s9j5].jpg    [Done: 60KB]
+Hmmmm [d8ge34].jpg    [Done: 42.5KB]
 
-From the US holocaust museum [gwpq6q].jpg    [Done: 75KB]
+Important Difference [d5wn3e].jpg    [Done: 130.6KB]
 
-How to pack a hiking bag [eqxs03].jpg    [Done: 31KB]
+What boolean algebraists sound like when they sleep [d4og58].png    [Done: 431.2KB]
 
-Epicurean paradox [g2axoj].jpg    [Too Large: 259KB]
+If Kira were a boolean algebraist [d4rpim].jpg    [Done: 42.9KB]
 
-Mind Fuck Movies [j6x8jl].jpg    [Done: 168KB]
+high quality facebook meme [d4hl21].png    [Done: 260.3KB]
 
-Recognizing a Mentally Abused Brain [j4nd29].png    [Too Large: 282KB]
+Classic Thrash Logic [d3t5g3].jpg    [Done: 56.9KB]
 
-Units of measurement [iehqe2].jpg    [Done: 65KB]
+The first logic gates [d2nr07].png    [Done: 378.6KB]
 
-Geography Terms [fj0h8a].jpg    [Too Large: 728KB]
+This made me giggle... [d1mefi].png    [Done: 61.2KB]
 
-How untreated ADHD causes and traps you in depression [fu1kf2].jpg    [Done: 161KB]
+Computer logic! [cwwjs4].jpg    [Done: 152.5KB]
 
-Copper through the patina process [gzb8y5].jpg    [Done: 96KB]
+INvestiGATED, and i dont like my meme [ctj56l].png    [Too Large: 1.2MB]
 
-A Restaurant Guide For How You Want Your Steak Cooked [esxk8v].jpg    [Done: 38KB]
+I hope you all appreciate this [bseze4].png    [Done: 87.1KB]
+
+logicdroids  [bs09g3].png    [Done: 211.6KB]
 
 --------------------
-Processed:  21
+Processed Posts:  29
 Already Downloaded:  0
 Failed:  0
-Saved:  15
-Other:  6
+Saved:  20
+Other:  9
+--------------------
+Approx. Storage Used: 3.2MB
 --------------------
 ```
 

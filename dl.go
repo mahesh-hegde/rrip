@@ -26,13 +26,12 @@ type Stats struct {
 
 // characters not allowed in some filesystems
 // and what to replace them with
-var specialChars = "?/:<>'\"|"
 
 // (mostly) command line options
 type Config struct {
 	After, Sort, UserAgent, Folder string
 	Limit, MaxFiles, MinKarma      int
-	Debug, DryRun, NoSpecialChars  bool
+	Debug, DryRun, AllowSpecialChars  bool
 	MaxStorage, MaxSize            int64
 	OgType                         string
 	PostLinksFile, MediaLinksFile  io.Writer
@@ -168,6 +167,30 @@ func HandlePosts(body io.ReadCloser, handler func(PostData)) (last string) {
 // if downloadable, return final URL, else return empty string
 // also the extension string that matched
 
+func removeSpecialChars(filename string) string {
+	var b strings.Builder
+	var banned map[rune]string
+	if config.AllowSpecialChars {
+		banned = minimalSubst
+	} else {
+		banned = windowsSubst
+	}
+	for _, r := range filename {
+		repl, spec := banned[r]
+		if spec {
+			b.WriteString(repl)
+		} else if !strconv.IsPrint(r) {
+			b.WriteRune('-')
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	if config.AllowSpecialChars {
+		return b.String();
+	}
+	return sanitizeWindowsFilename(b.String())
+}
+
 func CheckImage(linkString string) (finalLink string, extension string) {
 	var exts = []string{".jpeg", ".gif", ".mp4", ".jpg", ".png"}
 	link, err := url.Parse(linkString)
@@ -216,7 +239,6 @@ func FetchUrlWithMethod(url, method string) (*http.Response, error) {
 	req, err := http.NewRequest(method, url, nil)
 	check(err)
 	req.Header.Add("User-Agent", config.UserAgent)
-	// client := &http.Client{}
 	response, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -271,7 +293,7 @@ func TraversePages(path string, handler func(PostData)) {
 	}
 }
 
-func DownloadLink(post PostData, client *http.Client) {
+func DownloadLink(post PostData) {
 	// process title, truncate if too long
 	title := strings.TrimSpace(strings.ReplaceAll(post.Title, "/", "|"))
 	title = html.UnescapeString(title) // &amp; etc.. are escaped in json
@@ -301,17 +323,9 @@ func DownloadLink(post PostData, client *http.Client) {
 		log(config.Debug, "Skip non-imagelike entry: ", title, " | ", post.Url, "\n")
 		return
 	}
-	filename := title + " [" + strings.TrimPrefix(post.Name, "t3_") + "]" + extension
-	charsToRemove := "/"
-	if config.NoSpecialChars {
-		charsToRemove = specialChars
-	}
-	filename = strings.Map(func(r rune) rune {
-		if strings.ContainsRune(charsToRemove, r) {
-			return -1
-		}
-		return r
-	}, filename)
+	filename := title + " [" + strings.TrimPrefix(post.Name, "t3_") +
+		"]" + extension
+	filename = removeSpecialChars(filename)
 	log(config.Debug, "URL: ", post.Url, " | Ups:", post.Ups)
 	log(config.Debug && url != post.Url, "->", url)
 	if config.MediaLinksFile != nil {
@@ -454,8 +468,9 @@ func main() {
 	// option parsing
 	flag.BoolVar(&config.Debug, "v", false, "Enable verbose output")
 	flag.BoolVar(&config.DryRun, "d", false, "DryRun i.e just print urls and names")
-	flag.BoolVar(&config.NoSpecialChars, "no-special-chars", false,
-		"Removes these characters from the filename: "+specialChars)
+	flag.BoolVar(&config.AllowSpecialChars, "special-chars", false,
+		"Allow all characters in filenames except / and \\, " +
+		"And windows-special filenames like NUL")
 	flag.StringVar(&config.After, "after", "", "Get posts after the given ID")
 	flag.StringVar(&config.UserAgent, "useragent", UserAgent, "UserAgent string")
 	flag.Int64Var(&config.MaxStorage, "max-storage", -1, "Data usage limit in MB, -1 for no limit")
@@ -540,18 +555,17 @@ func main() {
 	signal.Notify(interrupt, os.Interrupt)
 
 	// create a client for all image downloader connections
-	client := &http.Client{}
 	// start downloading
 
 	go TraversePages(path, func(post PostData) {
-		DownloadLink(post, client)
+		DownloadLink(post)
 	})
 
 	select {
 	case <-interrupt:
 		eprintln("Interrupt received, Exiting...")
 		if (downloadingFilename != "") {
-			eprintf("Removing possibly incomplete file %s\n", downloadingFilename)
+			eprintf("Removing possibly incomplete file: '%s'\n", downloadingFilename)
 			os.Remove(downloadingFilename)
 		}
 		PrintStat()
