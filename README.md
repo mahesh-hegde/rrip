@@ -25,7 +25,7 @@ It has a few configurable options as well
 Assuming you have Go toolchain installed
 
 ```
-go install github.com/mahesh-hegde/reddit-rip
+go install github.com/mahesh-hegde/reddit-rip@latest
 ```
 
 or
