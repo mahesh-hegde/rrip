@@ -25,9 +25,6 @@ type Stats struct {
 	CopiedBytes                        int64
 }
 
-// characters not allowed in some filesystems
-// and what to replace them with
-
 // (mostly) command line options
 type Config struct {
 	After, Sort, UserAgent, Folder string
@@ -55,20 +52,13 @@ type ApiResponse struct {
 	Data ApiData
 }
 
-// Entire Program uses same config and stats
-// Passing it around is tedious
-// currently only one thread downloads
-
 var stats Stats
 var config Config
 
 
-// similarly for the interrupt channel
 var interrupt chan os.Signal
 var completion = make(chan bool)
 
-// filename to remove if interrupt received
-// race conditions with this are generally harmless
 var downloadingFilename string
 
 // BugFix: with transparent HTTP/2, sometimes reddit servers send HTML instead of JSON
@@ -104,7 +94,6 @@ func eprint(vals ...interface{}) {
 	fmt.Fprint(os.Stderr, vals...)
 }
 
-// unreadable code but saved my keyboard
 func check(e error, extra ...interface{}) {
 	if e != nil {
 		fmt.Fprintln(os.Stderr, extra...)
@@ -272,12 +261,11 @@ func FetchUrl(url string) (*http.Response, error) {
 func TraversePages(path string, handler func(PostData)) {
 	target := "https://www.reddit.com/" + strings.TrimSuffix(path, "/")
 
-	// so that we don't modify at a distance
 	after := config.After
 	// Handle sort options
 	topBy := ""
 	switch config.Sort {
-	case "best", "hot", "new", "rising":
+	case "hot", "new", "rising":
 		target += "/" + config.Sort
 	case "top-hour", "top-day", "top-month", "top-year", "top-all":
 		target += "/top"
@@ -306,22 +294,18 @@ func TraversePages(path string, handler func(PostData)) {
 		processed := stats.Processed
 		after = HandlePosts(response.Body, handler)
 		if stats.Processed == processed {
-			// no items were got in this page
 			Finish()
 		}
 	}
 }
 
 func DownloadLink(post PostData) {
-	// process title, truncate if too long
 	title := strings.TrimSpace(strings.ReplaceAll(post.Title, "/", "|"))
 	title = html.UnescapeString(title) // &amp; etc.. are escaped in json
 	if len(title) > 194 {
 		title = title[:192] + ".."
 	}
 	// check if Karma limit is met
-	// will any post ever get 2B upvotes?
-	// also: default limit is 1 karma point.
 	if post.Ups < config.MinKarma {
 		log(config.Debug, "Skipped Due to Less Karma:", title,
 			"| Ups:", post.Ups, "|", post.Url, "\n\n")
@@ -332,7 +316,6 @@ func DownloadLink(post PostData) {
 		return
 	}
 
-	// log the post links if required
 	if config.PostLinksFile != nil {
 		fmt.Fprintln(config.PostLinksFile, post.Url)
 	}
@@ -546,7 +529,6 @@ func main() {
 	}
 
 	// compute actual MaxStorage in bytes
-	// if you're overflowing this, you have bigger problems
 	if config.MaxStorage != -1 {
 		config.MaxStorage *= 1000 * 1000 // MB
 	}
@@ -572,9 +554,6 @@ func main() {
 	// to properly handle Ctrl+C, notify os.Interrupt
 	interrupt = make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
-
-	// create a client for all image downloader connections
-	// start downloading
 
 	go TraversePages(path, func(post PostData) {
 		DownloadLink(post)
