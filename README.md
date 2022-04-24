@@ -24,7 +24,11 @@ It has a few configurable options as well
 ## Build
 Assuming you have Go toolchain installed
 
-depends on html parser: golang.org/x/net/html
+```
+go install github.com/mahesh-hegde/reddit-rip
+```
+
+or
 
 ```
 git clone --depth=1 https://github.com/mahesh-hegde/reddit-rip.git
