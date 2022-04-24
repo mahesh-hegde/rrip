@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"crypto/tls" // For disabling http/2!
 	"os"
 	"os/signal"
 	"strconv"
@@ -15,7 +16,7 @@ import (
 )
 
 const (
-	UserAgent    = "rip for Reddit / Command Line Tool"
+	UserAgent    = "Rip for Reddit / CLI Tool"
 	DefaultLimit = 100
 )
 
@@ -69,6 +70,14 @@ var completion = make(chan bool)
 // filename to remove if interrupt received
 // race conditions with this are generally harmless
 var downloadingFilename string
+
+// BugFix: with transparent HTTP/2, sometimes reddit servers send HTML instead of JSON
+// So create a custom client
+var client = http.Client{
+	Transport: &http.Transport{
+		TLSNextProto: map[string]func(authority string, c *tls.Conn) http.RoundTripper{},
+	},
+}
 
 func either(a, b string) string {
 	if a == "" {
@@ -216,6 +225,7 @@ func CheckImage(linkString string) (finalLink string, extension string) {
 	if config.OgType != "" {
 		log(config.Debug, "REQUEST PAGE: "+linkString)
 		response, err := FetchUrl(linkString)
+		log(config.Debug, "Response Headers=", response.Header)
 		if err != nil {
 			log(config.Debug, err.Error())
 			return "", ""
@@ -235,11 +245,19 @@ func CheckImage(linkString string) (finalLink string, extension string) {
 }
 
 // Returns Resp : *http.Response
-func FetchUrlWithMethod(url, method string) (*http.Response, error) {
+func FetchUrlWithMethod(url, method string, acceptMimeType string) (*http.Response, error) {
 	req, err := http.NewRequest(method, url, nil)
 	check(err)
 	req.Header.Add("User-Agent", config.UserAgent)
-	response, err := http.DefaultClient.Do(req)
+
+	if acceptMimeType != "" {
+		req.Header.Add("Accept", acceptMimeType)
+	}
+
+	log(config.Debug, "Headers: ", req.Header)
+	log(config.Debug, "Protocol: ", req.Proto)
+	response, err := client.Do(req)
+
 	if err != nil {
 		return nil, err
 	}
@@ -247,12 +265,12 @@ func FetchUrlWithMethod(url, method string) (*http.Response, error) {
 }
 
 func FetchUrl(url string) (*http.Response, error) {
-	return FetchUrlWithMethod(url, "GET")
+	return FetchUrlWithMethod(url, "GET", "")
 }
 
 // downloads all images reachable from reddit.com/<path>.json
 func TraversePages(path string, handler func(PostData)) {
-	target := "https://reddit.com/" + strings.TrimSuffix(path, "/")
+	target := "https://www.reddit.com/" + strings.TrimSuffix(path, "/")
 
 	// so that we don't modify at a distance
 	after := config.After
@@ -280,7 +298,8 @@ func TraversePages(path string, handler func(PostData)) {
 			link += "&after=" + after
 		}
 		log(config.Debug, "REQUEST: ", link)
-		response, err := FetchUrl(link)
+		response, err := FetchUrlWithMethod(link, "GET", "application/json")
+		log(config.Debug, "Response Headers=", response.Header)
 		check(err, "Cannot get JSON response")
 		defer response.Body.Close()
 
@@ -369,7 +388,7 @@ func DownloadLink(post PostData) {
 		return
 	}
 	// Fetch
-	response, err := FetchUrlWithMethod(url, "HEAD")
+	response, err := FetchUrlWithMethod(url, "HEAD", "")
 	if err != nil {
 		netError("Request ")
 		return
