@@ -4,8 +4,9 @@ package main
 
 import (
 	"errors"
-	"golang.org/x/net/html"
 	"io"
+
+	"golang.org/x/net/html"
 )
 
 func NextMetaTag(tok *html.Tokenizer) (html.Token, error) {

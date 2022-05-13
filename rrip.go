@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls" // For disabling http/2!
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -8,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"crypto/tls" // For disabling http/2!
 	"os"
 	"os/signal"
 	"strconv"

@@ -1,5 +1,5 @@
-module github.com/mahesh-hegde/reddit-rip
+module github.com/mahesh-hegde/rrip
 
-go 1.15
+go 1.18
 
-require golang.org/x/net v0.0.0-20210614182718-04defd469f4e
+require golang.org/x/net v0.0.0-20220425223048-2871e0cb64e4
