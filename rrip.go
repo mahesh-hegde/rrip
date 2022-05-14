@@ -42,8 +42,8 @@ type Options struct {
 	FlairContains, FlairNotContains  *regexp.Regexp
 	LinkContains, LinkNotContains    *regexp.Regexp
 	Search                           string
-	DownloadPreview             bool
-	PreferPreview               bool
+	DownloadPreview                  bool
+	PreferPreview                    bool
 	PreviewRes                       int
 }
 
@@ -60,7 +60,7 @@ type ImagePreview struct {
 
 type PostData struct {
 	Url, Name, Title  string
-	Score        int
+	Score             int
 	Subreddit, Author string
 	LinkFlairText     string
 	CreatedUtc        int64
@@ -143,7 +143,7 @@ func fatal(val ...interface{}) {
 	os.Exit(1)
 }
 
-func eprintln(vals ...interface{}) (int, error){
+func eprintln(vals ...interface{}) (int, error) {
 	return fmt.Fprintln(os.Stderr, vals...)
 }
 
@@ -156,10 +156,10 @@ func eprint(vals ...interface{}) (int, error) {
 }
 
 func max(a, b int) int {
-	if (a > b) {
-		return a;
+	if a > b {
+		return a
 	}
-	return b;
+	return b
 }
 
 func check(e error, extra ...interface{}) {
@@ -323,10 +323,10 @@ func FetchUrl(url string) (*http.Response, error) {
 
 func padString(s string, min int) string {
 	sl := len(s)
-	if (sl >= min) {
+	if sl >= min {
 		return s
 	}
-	return s + strings.Repeat(" ", min - sl)
+	return s + strings.Repeat(" ", min-sl)
 }
 
 // downloads all images reachable from reddit.com/<path>.json
@@ -476,11 +476,11 @@ func DownloadPost(post PostData) {
 		return true
 	}
 
-	if (options.DownloadPreview) {
+	if options.DownloadPreview {
 		if !usePreview() {
-			return;
+			return
 		}
-	} else if (options.PreferPreview) {
+	} else if options.PreferPreview {
 		usePreview()
 	} else {
 		// proceed with URL found in the post
@@ -625,7 +625,7 @@ func DownloadPost(post PostData) {
 	// Transfer success I hope
 	// write stats
 	done := fmt.Sprintf("    [Complete: %s]\n", size(n))
-	eprintf("%*s", maxCharsOnRight, done);
+	eprintf("%-*s", maxCharsOnRight, done)
 	stats.Saved += 1
 	if stats.Saved == options.MaxFiles {
 		Finish()
@@ -730,7 +730,7 @@ func main() {
 	}
 
 	if options.PreviewRes > 0 && !options.DownloadPreview &&
-			!options.PreferPreview {
+		!options.PreferPreview {
 		fatal("-download-preview or -prefer-preview should be used with " +
 			"-preview-res")
 	}
