@@ -42,8 +42,8 @@ func AttrValue(token html.Token, ns, key string) string {
 
 func GetOgUrl(source io.Reader) (string, error) {
 	tokenizer := html.NewTokenizer(source)
-	reqProp := "og:" + config.OgType
-	if config.OgType == "any" {
+	reqProp := "og:" + options.OgType
+	if options.OgType == "any" {
 		reqProp = "og:video"
 	}
 	for {
@@ -57,7 +57,7 @@ func GetOgUrl(source io.Reader) (string, error) {
 		}
 		prop := AttrValue(metaTag, "", "property")
 		if prop == reqProp ||
-			prop == "og:image" && config.OgType == "any" {
+			prop == "og:image" && options.OgType == "any" {
 			link := AttrValue(metaTag, "", "content")
 			return link, nil
 		}

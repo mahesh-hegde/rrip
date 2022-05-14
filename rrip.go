@@ -16,28 +16,48 @@ import (
 )
 
 const (
-	UserAgent    = "Rip for Reddit / CLI Tool"
+	UserAgent    = "rrip / Go CLI Tool"
 	DefaultLimit = 100
 )
+
+var terminalColumns = getTerminalSize();
+
+var horizontalDashedLine = strings.Repeat("-", terminalColumns)
 
 type Stats struct {
 	Processed, Saved, Failed, Repeated int
 	CopiedBytes                        int64
 }
 
-// (mostly) command line options
-type Config struct {
-	After, Sort, UserAgent, Folder string
-	Limit, MaxFiles, MinKarma      int
-	Debug, DryRun, AllowSpecialChars  bool
-	MaxStorage, MaxSize            int64
-	OgType                         string
-	PostLinksFile, MediaLinksFile  io.Writer
+type Options struct {
+	After, Sort, UserAgent, Folder   string
+	Limit, MaxFiles, MinScore        int
+	Debug, DryRun, AllowSpecialChars bool
+	MaxStorage, MaxSize              int64
+	OgType                           string
+	LogLinksFile                     io.Writer
+}
+
+type ImagePreviewEntry struct {
+	Url    string
+	Width  int
+	Height int
+}
+
+type ImagePreview struct {
+	Source      ImagePreviewEntry
+	Resolutions []ImagePreviewEntry
 }
 
 type PostData struct {
-	Url, Name, Title string
-	Ups              int
+	Url, Name, Title  string
+	Ups, Score        int
+	Subreddit, Author string
+	LinkFlairText     string
+	CreatedUtc        int64
+	Preview           struct {
+		images []ImagePreview
+	}
 }
 
 type Post struct {
@@ -45,6 +65,7 @@ type Post struct {
 }
 
 type ApiData struct {
+	After    string
 	Children []Post
 }
 
@@ -53,8 +74,7 @@ type ApiResponse struct {
 }
 
 var stats Stats
-var config Config
-
+var options Options
 
 var interrupt chan os.Signal
 var completion = make(chan bool)
@@ -69,7 +89,7 @@ var client = http.Client{
 	},
 }
 
-func either(a, b string) string {
+func coalesce(a, b string) string {
 	if a == "" {
 		return b
 	}
@@ -81,7 +101,6 @@ func fatal(val ...interface{}) {
 	os.Exit(1)
 }
 
-// always print user visible info to standard error
 func eprintln(vals ...interface{}) {
 	fmt.Fprintln(os.Stderr, vals...)
 }
@@ -101,18 +120,16 @@ func check(e error, extra ...interface{}) {
 	}
 }
 
-func log(debug bool, vals ...interface{}) {
-	if debug {
+func log(vals ...interface{}) {
+	if options.Debug {
 		fmt.Fprintln(os.Stderr, vals...)
 	}
 }
 
-// return size as human readable string
 func size(bytes int64) string {
 	sizes := []int64{1000 * 1000 * 1000, 1000 * 1000, 1000}
 	names := []string{"GB", "MB", "KB"}
 
-	// content length in http response can be -1
 	if bytes == -1 {
 		return "Unknown length"
 	}
@@ -127,16 +144,16 @@ func size(bytes int64) string {
 }
 
 func PrintStat() {
-	eprintln(strings.Repeat("-", 20))
+	eprintln(horizontalDashedLine)
 	eprintln("Processed Posts: ", stats.Processed)
 	eprintln("Already Downloaded: ", stats.Repeated)
 	eprintln("Failed: ", stats.Failed)
 	eprintln("Saved: ", stats.Saved)
 	eprintln("Other: ",
 		stats.Processed-stats.Failed-stats.Repeated-stats.Saved)
-	eprintln(strings.Repeat("-", 20))
+	eprintln(horizontalDashedLine)
 	eprintln("Approx. Storage Used:", size(stats.CopiedBytes))
-	eprintln(strings.Repeat("-", 20))
+	eprintln(horizontalDashedLine)
 }
 
 func Finish() {
@@ -161,14 +178,10 @@ func HandlePosts(body io.ReadCloser, handler func(PostData)) (last string) {
 	return last
 }
 
-// Returns whether the image link can be downloaded
-// if downloadable, return final URL, else return empty string
-// also the extension string that matched
-
 func removeSpecialChars(filename string) string {
 	var b strings.Builder
 	var banned map[rune]string
-	if config.AllowSpecialChars {
+	if options.AllowSpecialChars {
 		banned = minimalSubst
 	} else {
 		banned = windowsSubst
@@ -183,13 +196,16 @@ func removeSpecialChars(filename string) string {
 			b.WriteRune(r)
 		}
 	}
-	if config.AllowSpecialChars {
-		return b.String();
+	if options.AllowSpecialChars {
+		return b.String()
 	}
 	return sanitizeWindowsFilename(b.String())
 }
 
-func CheckImage(linkString string) (finalLink string, extension string) {
+// Returns whether the image link can be downloaded
+// if downloadable, return final URL, else return empty string
+// also the extension string that matched
+func CheckAndResolveImage(linkString string) (finalLink string, extension string) {
 	var exts = []string{".jpeg", ".gif", ".mp4", ".jpg", ".png"}
 	link, err := url.Parse(linkString)
 	check(err)
@@ -197,7 +213,7 @@ func CheckImage(linkString string) (finalLink string, extension string) {
 
 	// imgur gifv links are generally MP4
 	if (link.Host == "i.imgur.com" || link.Host == "imgur.com") &&
-			strings.HasSuffix(path, ".gifv") {
+		strings.HasSuffix(path, ".gifv") {
 		trimmed := strings.TrimSuffix(path, ".gifv")
 		link.Path = trimmed + ".mp4"
 		link.Host = "i.imgur.com"
@@ -211,40 +227,40 @@ func CheckImage(linkString string) (finalLink string, extension string) {
 	}
 
 	// if ogType is given, read the link and get it's og:video or og:image
-	if config.OgType != "" {
-		log(config.Debug, "REQUEST PAGE: "+linkString)
+	if options.OgType != "" {
+		log("REQUEST PAGE: " + linkString)
 		response, err := FetchUrl(linkString)
-		log(config.Debug, "Response Headers=", response.Header)
+		log("Response Headers=", response.Header)
 		if err != nil {
-			log(config.Debug, err.Error())
+			log(err.Error())
 			return "", ""
 		}
 		defer response.Body.Close()
 		contentType := response.Header.Get("Content-Type")
 		if strings.ToLower(contentType) != "text/html; charset=utf-8" {
-			log(config.Debug, "Unsupported ContentType when looking for og: url")
+			log("Unsupported ContentType when looking for og: url")
 			return "", ""
 		}
 		ogUrl, err := GetOgUrl(response.Body)
 		if ogUrl != "" {
-			return CheckImage(ogUrl)
+			return CheckAndResolveImage(ogUrl)
 		}
 	}
 	return "", ""
 }
 
-// Returns Resp : *http.Response
+// pass acceptMimeType = "" if no restriction
 func FetchUrlWithMethod(url, method string, acceptMimeType string) (*http.Response, error) {
 	req, err := http.NewRequest(method, url, nil)
 	check(err)
-	req.Header.Add("User-Agent", config.UserAgent)
+	req.Header.Add("User-Agent", options.UserAgent)
 
 	if acceptMimeType != "" {
 		req.Header.Add("Accept", acceptMimeType)
 	}
 
-	log(config.Debug, "Headers: ", req.Header)
-	log(config.Debug, "Protocol: ", req.Proto)
+	log("Headers: ", req.Header)
+	log("Protocol: ", req.Proto)
 	response, err := client.Do(req)
 
 	if err != nil {
@@ -259,23 +275,27 @@ func FetchUrl(url string) (*http.Response, error) {
 
 // downloads all images reachable from reddit.com/<path>.json
 func TraversePages(path string, handler func(PostData)) {
-	target := "https://www.reddit.com/" + strings.TrimSuffix(path, "/")
+	unsuffixedPath := strings.TrimSuffix(path, "/")
+	if unsuffixedPath == "" {
+		options.Sort = "hot"
+	}
+	target := "https://www.reddit.com/" + unsuffixedPath
 
-	after := config.After
+	after := options.After
 	// Handle sort options
 	topBy := ""
-	switch config.Sort {
+	switch options.Sort {
 	case "hot", "new", "rising":
-		target += "/" + config.Sort
+		target += "/" + options.Sort
 	case "top-hour", "top-day", "top-month", "top-year", "top-all":
 		target += "/top"
-		topBy = strings.TrimPrefix(config.Sort, "top-")
+		topBy = strings.TrimPrefix(options.Sort, "top-")
 	case "":
 		_ = "best" // do nothing
 	default:
 		fatal("Invalid option passed to sort")
 	}
-	target += ".json?limit=" + strconv.Itoa(config.Limit)
+	target += ".json?limit=" + strconv.Itoa(options.Limit)
 	// for sort by top voted
 	if topBy != "" {
 		target += "&t=" + topBy
@@ -285,9 +305,9 @@ func TraversePages(path string, handler func(PostData)) {
 		if after != "" {
 			link += "&after=" + after
 		}
-		log(config.Debug, "REQUEST: ", link)
+		log("REQUEST: ", link)
 		response, err := FetchUrlWithMethod(link, "GET", "application/json")
-		log(config.Debug, "Response Headers=", response.Header)
+		log("Response Headers=", response.Header)
 		check(err, "Cannot get JSON response")
 		defer response.Body.Close()
 
@@ -299,55 +319,53 @@ func TraversePages(path string, handler func(PostData)) {
 	}
 }
 
-func DownloadLink(post PostData) {
+func DownloadPost(post PostData) {
 	title := strings.TrimSpace(strings.ReplaceAll(post.Title, "/", "|"))
 	title = html.UnescapeString(title) // &amp; etc.. are escaped in json
 	if len(title) > 194 {
 		title = title[:192] + ".."
 	}
-	// check if Karma limit is met
-	if post.Ups < config.MinKarma {
-		log(config.Debug, "Skipped Due to Less Karma:", title,
-			"| Ups:", post.Ups, "|", post.Url, "\n\n")
-		if strings.HasPrefix(config.Sort, "top-") {
-			eprintln("Skipping posts with less points, since sort=" + config.Sort)
+	if post.Score < options.MinScore {
+		log("Skipped due to less score:", title,
+			"| Score:", post.Score, "|", post.Url, "\n")
+		if strings.HasPrefix(options.Sort, "top-") {
+			eprintln("Skipping posts with less points, since sort=" + options.Sort)
 			Finish()
 		}
 		return
 	}
 
-	if config.PostLinksFile != nil {
-		fmt.Fprintln(config.PostLinksFile, post.Url)
+	if options.LogLinksFile != nil {
+		fmt.Fprintln(options.LogLinksFile, post.Url)
 	}
-	// check if url is image
-	url, extension := CheckImage(post.Url)
-	if url == "" {
-		log(config.Debug, "Skip non-imagelike entry: ", title, " | ", post.Url, "\n")
+	imageUrl, extension := CheckAndResolveImage(post.Url)
+	if imageUrl == "" {
+		log("Skip non-imagelike entry: ", title, " | ", post.Url)
 		return
 	}
 	filename := title + " [" + strings.TrimPrefix(post.Name, "t3_") +
 		"]" + extension
 	filename = removeSpecialChars(filename)
-	log(config.Debug, "URL: ", post.Url, " | Ups:", post.Ups)
-	log(config.Debug && url != post.Url, "->", url)
-	if config.MediaLinksFile != nil {
-		fmt.Fprintln(config.MediaLinksFile, url)
+	log("URL: ", post.Url, " | Ups:", post.Ups)
+	if imageUrl != post.Url {
+		log("->", imageUrl)
 	}
-	eprint(filename)
+	eprintf("%-*.*s", terminalColumns-24, terminalColumns-24, filename)
+
 	// check if already downloaded file
 	_, err := os.Stat(filename)
 	if err == nil {
-		eprint("    [Already Downloaded]\n\n")
+		eprint("    [Already Downloaded]\n")
 		stats.Repeated += 1
 		return
 	}
 
 	// If dry run, don't fetch media, or create a file
 	// but you still have to increase number of files for config.MaxFiles to work
-	if config.DryRun {
-		eprint("    [Dry Run]\n\n")
+	if options.DryRun {
+		eprint("    [Dry Run]\n")
 		stats.Saved += 1
-		if stats.Saved == config.MaxFiles {
+		if stats.Saved == options.MaxFiles {
 			Finish()
 		}
 		return
@@ -359,19 +377,19 @@ func DownloadLink(post PostData) {
 	// Common error handling code
 	netError := func(kind string) {
 		stats.Failed += 1
-		eprintf("    [" + kind + " Error: " + err.Error() + "]\n\n")
+		eprintf("    [" + kind + " Error: " + err.Error() + "]\n")
 		if output != nil {
 			// transfer errors when file was already created
-			log(config.Debug, "Try remove file: ", filename)
+			log("Try remove file: ", filename)
 			rmErr := os.Remove(filename)
 			if rmErr != nil {
-				log(config.Debug, "Error removing file")
+				log("Error removing file")
 			}
 		}
 		return
 	}
 	// Fetch
-	response, err := FetchUrlWithMethod(url, "HEAD", "")
+	response, err := FetchUrlWithMethod(imageUrl, "HEAD", "")
 	if err != nil {
 		netError("Request ")
 		return
@@ -389,37 +407,37 @@ func DownloadLink(post PostData) {
 
 	length := response.ContentLength
 	// If larger or unknown length, skip
-	skipDueToSize := (config.MaxSize != -1) &&
-		(config.MaxSize < length || length == -1)
+	skipDueToSize := (options.MaxSize != -1) &&
+		(options.MaxSize < length || length == -1)
 	// if file length unknown and there is storage limit, skip
 	skipDueToSize = skipDueToSize ||
-		(config.MaxStorage != -1 && length == -1)
+		(options.MaxStorage != -1 && length == -1)
 	if skipDueToSize {
-		eprintf("    [Too Large: %s]\n\n", size(length))
+		eprintf("    [Too Large: %s]\n", size(length))
 		return
 	}
 	// if file length will go past the storage limit, finish
-	if config.MaxStorage != -1 && config.MaxStorage < length+stats.CopiedBytes {
+	if options.MaxStorage != -1 && options.MaxStorage < length+stats.CopiedBytes {
 		eprintf("    [%s | Crosses storage limit]\n\n", size(length))
 		Finish()
 	}
 
 	// Create file
-	log(config.Debug, "  [Creating file]")
+	log("  [Creating file]")
 	downloadingFilename = filename
 	defer func() {
 		downloadingFilename = ""
 	}()
 	output, err = os.Create(filename)
 	if err != nil {
-		eprintf("    [Cannot create file]\n\n")
+		eprintf("    [Cannot create file]\n")
 		stats.Failed += 1
 		return
 	}
 	defer output.Close()
 
 	// do a GET request
-	fullResponse, err := FetchUrl(url)
+	fullResponse, err := FetchUrl(imageUrl)
 	if err != nil {
 		netError("Request ")
 		return
@@ -441,9 +459,9 @@ func DownloadLink(post PostData) {
 
 	// Transfer success I hope
 	// write stats
-	eprintf("    [Done: %s]\n\n", size(n))
+	eprintf("    [Done: %s]\n", size(n))
 	stats.Saved += 1
-	if stats.Saved == config.MaxFiles {
+	if stats.Saved == options.MaxFiles {
 		Finish()
 	}
 	return
@@ -465,27 +483,26 @@ func main() {
 	help := false
 	// whether help option is provided
 	flag.BoolVar(&help, "help", false, "Show this help message")
-	var logMediaLinksTo, logPostLinksTo string
+	var logLinksTo string
 	var err error
 	// option parsing
-	flag.BoolVar(&config.Debug, "v", false, "Enable verbose output")
-	flag.BoolVar(&config.DryRun, "d", false, "DryRun i.e just print urls and names")
-	flag.BoolVar(&config.AllowSpecialChars, "special-chars", false,
-		"Allow all characters in filenames except / and \\, " +
-		"And windows-special filenames like NUL")
-	flag.StringVar(&config.After, "after", "", "Get posts after the given ID")
-	flag.StringVar(&config.UserAgent, "useragent", UserAgent, "UserAgent string")
-	flag.Int64Var(&config.MaxStorage, "max-storage", -1, "Data usage limit in MB, -1 for no limit")
-	flag.Int64Var(&config.MaxSize, "max-size", -1, "Max size of media file in KB, -1 for no limit")
-	flag.StringVar(&config.Folder, "folder", "", "Target folder name")
-	flag.StringVar(&logMediaLinksTo, "log-media-links", "", "Log media links to given file")
-	flag.StringVar(&logPostLinksTo, "log-post-links", "", "Log all links found in posts to given file")
-	flag.StringVar(&config.OgType, "og-type", "", "Look Up for a media link in page's og:property"+
+	flag.BoolVar(&options.Debug, "v", false, "Enable verbose output")
+	flag.BoolVar(&options.DryRun, "d", false, "DryRun i.e just print urls and names")
+	flag.BoolVar(&options.AllowSpecialChars, "allow-special-chars", false,
+		"Allow all characters in filenames except / and \\, "+
+			"And windows-special filenames like NUL")
+	flag.StringVar(&options.After, "after", "", "Get posts after the given ID")
+	flag.StringVar(&options.UserAgent, "useragent", UserAgent, "UserAgent string")
+	flag.Int64Var(&options.MaxStorage, "max-storage", -1, "Data usage limit in MB, -1 for no limit")
+	flag.Int64Var(&options.MaxSize, "max-size", -1, "Max size of media file in KB, -1 for no limit")
+	flag.StringVar(&options.Folder, "folder", "", "Target folder name")
+	flag.StringVar(&logLinksTo, "log-links", "", "Log media links to given file")
+	flag.StringVar(&options.OgType, "og-type", "", "Look Up for a media link in page's og:property"+
 		" if link itself is not image/video (experimental) supported: video, image, any")
-	flag.StringVar(&config.Sort, "sort", "", "Sort: best|hot|new|rising|top-<all|year|month|week|day>")
-	flag.IntVar(&config.MaxFiles, "max", -1, "Max number of files to download (+ve), -1 for no limit")
-	flag.IntVar(&config.MinKarma, "min-karma", 0, "Minimum Karma of the post")
-	flag.IntVar(&config.Limit, "l", 100, "Number of entries to fetch in one API request (devel)")
+	flag.StringVar(&options.Sort, "sort", "", "Sort: best|hot|new|rising|top-<all|year|month|week|day>")
+	flag.IntVar(&options.MaxFiles, "max-files", -1, "Max number of files to download (+ve), -1 for no limit")
+	flag.IntVar(&options.MinScore, "min-score", 0, "Minimum score of the post to download")
+	flag.IntVar(&options.Limit, "l", 100, "Number of entries to fetch in one API request (devel)")
 	flag.Parse()
 	args := flag.Args()
 	if len(args) != 1 || help {
@@ -494,61 +511,56 @@ func main() {
 		os.Exit(1)
 	}
 
-	if logPostLinksTo != "" && logPostLinksTo == logMediaLinksTo {
-		fatal("Can't log both post and media links to same file")
-	}
-
-	config.PostLinksFile = createLinksFile(logPostLinksTo)
-	config.MediaLinksFile = createLinksFile(logMediaLinksTo)
+	options.LogLinksFile = createLinksFile(logLinksTo)
 
 	path := strings.TrimSuffix(args[0], "/")
 
 	// validate some arguments
-	// handling 0 correctly probably requires some more code, so don't
 	toCheck := map[string]int64{
-		"-max":         int64(config.MaxFiles),
-		"-max-storage": config.MaxStorage,
-		"-max-size":    config.MaxSize,
+		"-max":         int64(options.MaxFiles),
+		"-max-storage": options.MaxStorage,
+		"-max-size":    options.MaxSize,
 	}
 	for option, value := range toCheck {
 		if value < 1 && value != -1 {
 			fatal("Invalid value for option " + option)
 		}
 	}
-	// only few values are supported for config.OgType
-	og := config.OgType
+
+	og := options.OgType
 	if og != "" && og != "video" && og != "image" && og != "any" {
 		fatal("Only supported values for -og-type are image, video and any")
 	}
-	// enable debug output in case of dry run
-	config.Debug = config.Debug || config.DryRun
 
-	// when we provide an -after= parameter manually, we expect a t3_ prefix
-	if config.After != "" && !strings.HasSuffix(config.After, "t3_") {
-		config.After = "t3_" + config.After
+	// enable debug output in case of dry run
+	options.Debug = options.Debug || options.DryRun
+
+	if options.After != "" && !strings.HasPrefix(options.After, "t3_") {
+		options.After = "t3_" + options.After
 	}
 
 	// compute actual MaxStorage in bytes
-	if config.MaxStorage != -1 {
-		config.MaxStorage *= 1000 * 1000 // MB
+	if options.MaxStorage != -1 {
+		options.MaxStorage *= 1000 * 1000 // MB
 	}
 
-	if config.MaxSize != -1 {
-		config.MaxSize *= 1000 // KB
+	if options.MaxSize != -1 {
+		options.MaxSize *= 1000 // KB
 	}
+
 	// Create folder
-	config.Folder = either(config.Folder,
+	options.Folder = coalesce(options.Folder,
 		strings.TrimPrefix(strings.ReplaceAll(path, "/", "."), "r."))
-	_, err = os.Stat(config.Folder)
+	_, err = os.Stat(options.Folder)
 
 	// Note: not creating folder anew if dry run
-	if os.IsNotExist(err) && !config.DryRun {
-		check(os.MkdirAll(config.Folder, 0755))
+	if os.IsNotExist(err) && !options.DryRun {
+		check(os.MkdirAll(options.Folder, 0755))
 	}
 
 	// if dry run, change to folder only if folder already existed
-	if err == nil || !config.DryRun {
-		check(os.Chdir(config.Folder))
+	if err == nil || !options.DryRun {
+		check(os.Chdir(options.Folder))
 	}
 
 	// to properly handle Ctrl+C, notify os.Interrupt
@@ -556,13 +568,13 @@ func main() {
 	signal.Notify(interrupt, os.Interrupt)
 
 	go TraversePages(path, func(post PostData) {
-		DownloadLink(post)
+		DownloadPost(post)
 	})
 
 	select {
 	case <-interrupt:
 		eprintln("Interrupt received, Exiting...")
-		if (downloadingFilename != "") {
+		if downloadingFilename != "" {
 			eprintf("Removing possibly incomplete file: '%s'\n", downloadingFilename)
 			os.Remove(downloadingFilename)
 		}

@@ -3,19 +3,19 @@ package main
 import "strings"
 
 var windowsSubst = map[rune]string{
-	'<' : "&lt;",
-	'>' : "&gt;",
-	':' : "-",
-	'"': "&quot;",
-	'/': "",
+	'<':  "&lt;",
+	'>':  "&gt;",
+	':':  "-",
+	'"':  "&quot;",
+	'/':  "",
 	'\\': "",
-	'|': "",
-	'?': "",
-	'*': "",
+	'|':  "",
+	'?':  "",
+	'*':  "",
 }
 
 var minimalSubst = map[rune]string{
-	'/' : "",
+	'/':  "",
 	'\\': "",
 }
 
@@ -28,7 +28,7 @@ var winBan = map[string]bool{
 }
 
 func sanitizeWindowsFilename(name string) string {
-	name = strings.Trim(name, " .");
+	name = strings.Trim(name, " .")
 	sansExt := strings.SplitN(name, ".", 2)[0]
 	if winBan[sansExt] {
 		return "__" + name
@@ -38,4 +38,3 @@ func sanitizeWindowsFilename(name string) string {
 	}
 	return name
 }
-
