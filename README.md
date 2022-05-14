@@ -1,176 +1,128 @@
-## rip for Reddit
+## rrip
 
-It's a simple image downloader CLI tool for reddit
-
-It downloads images from URLs that look like images
-
-It has a few configurable options as well
+Program to bulk-download image from reddit subreddits.
 
 ## Features
+
+* Set max size of file, max total size, minimum score etc..
+
+* Filter by post title or link using regular expression.
+
+* If the image / GIF is already downloaded in same folder, skip it.
+
+* Log final download URLs to a file using a custom format string.
+
+* Download images from Reddit preview links instead of source. (Experimental)
+
+* Scrape images from links that don't end with media extensions. (Experimental)
+
 (Note: I have not tested all combinations of features, you might encounter some bugs!)
-
-* Set max size limit for media download (in KBs)
-
-* Fetch top / best / new / rising entries using -sort option
-
-* Assign a karma threshold (default 1)
-
-* If the image / gif is already downloaded, skip it.
-
-* Can log final URLs to a file.
-
-* Primitive support for scraping pages that don't end with media extensions, using -og-type flag.
 
 ## Build
 Assuming you have Go toolchain installed
 
 ```
-go install github.com/mahesh-hegde/reddit-rip@latest
+go install github.com/mahesh-hegde/rrip@latest
 ```
 
 or
 
 ```
-git clone --depth=1 https://github.com/mahesh-hegde/reddit-rip.git
-cd reddit-rip
-go build
+git clone --depth=1 https://github.com/mahesh-hegde/rrip.git
+cd rrip
+go build && go install
 ```
-
-your executable is "reddit-rip" or "reddit-rip.exe" depending on OS, saved in same folder.
 
 ## Note about windows
 I wrote this on Linux. May not work well on Windows. A best-effort default option is enabled to sanitize filenames so that they can be saved on Windows / Android. But don't blame me if you face some quirks of Windows OS. 
 
 ## Usage
 ```
-Usage: reddit-rip <options> <r/subreddit>
+Usage: rrip <options> <r/subreddit>
   -after string
         Get posts after the given ID
-  -d    DryRun i.e just print urls and names
+  -allow-special-chars
+        Allow all characters in filenames except / and \, And windows-special filenames like NUL
+  -d    DryRun i.e just print urls and names (devel)
+  -download-preview
+        download reddit preview image instead of posted URL
+  -entries-limit int
+        Number of entries to fetch in one API request (devel) (default 100)
+  -flair-contains string
+        Download if flair contains substring matching given regex
+  -flair-not-contains string
+        Download if flair does not contain substring matching given regex
   -folder string
         Target folder name
   -help
         Show this help message
-  -l int
-        Number of entries to fetch in one API request (devel) (default 100)
-  -log-media-links string
+  -link-contains string
+        Download if posted link contains substring matching given regex
+  -link-not-contains string
+        Download if posted link does not contain substring matching given regex
+  -log-links string
         Log media links to given file
-  -log-post-links string
-        Log all links found in posts to given file
-  -max int
+  -log-links-format string
+        Format of links logged. allowed placeholders: {{final_url}}, {{posted_url}}, {{id}}, {{author}}, {{title}}, {{score}} (default "{{final_url}}")
+  -max-files int
         Max number of files to download (+ve), -1 for no limit (default -1)
   -max-size int
         Max size of media file in KB, -1 for no limit (default -1)
   -max-storage int
         Data usage limit in MB, -1 for no limit (default -1)
-  -min-karma int
-        Minimum Karma of the post
+  -min-score int
+        Minimum score of the post to download
   -og-type string
-        Look Up for a media link in page's og:property if link itself is not image/video (experimental) supported: video, image, any
+        Look Up for a media link in page's og:property if link itself is not image/video (experimental). supported values: video, image, any
+  -preview-res int
+        Width of preview to download, eg: 640, 960, 1080 (default -1)
+  -search string
+        Search for given term
   -sort string
         Sort: best|hot|new|rising|top-<all|year|month|week|day>
-  -special-chars
-        Allow all characters in filenames except / and \, And windows-special filenames like NUL
+  -title-contains string
+        Download if title contains substring matching given regex
+  -title-not-contains string
+        Download if title does not contain substring matching given regex
   -useragent string
-        UserAgent string (default "rip for Reddit / Command Line Tool")
-  -v    Enable verbose output
+        UserAgent string (default "rrip / Go CLI Tool")
+  -v    Enable verbose output (devel)
 ```
 
-**Note:**
+## tl;dr
 
-* -d implies -v
+```sh
+## Download only 200KB+ files from r/Wallpaper
+rrip -max-size=200 r/Wallpaper
 
-* use -log-media-links=filename option with -d (dry run) if you just want to log media URLs and not download them.
+## Download all time top from r/WildLifePhotography, without exceeding 20MB storage or 50 files
+rrip -max-storage=20 -max-files=50 -sort=top-all r/WildlifePhotography
 
-* some sites like gfycat don't provide downloadable URLs directly, you might try passing -og-type=video for example, so that the program will try to scrape "og:video" property from the link. Supported options are video, image, or any (first try to find og:video, or fallback to og:image)
+## Search "Neon" on r/AMOLEDBackgrounds and download top 20, sorted by top voted in past one year
+rrip -search="Neon" -max-files=20 r/AMOLEDBackgrounds
 
-* I have not tested all combinations of options, you might discover some bugs !!
+## Download memes from r/LogicGateMemes, download reddit previews (640p)
+## instead of original image, for space savings.
+## Also log all image links to file called meme.txt along with title
 
-## Sample Session
+## Note that -preview-res cannot be arbitrary
+## Ones that generally work are 1080, 960, 640, 360, 216, 108
+## If no suitable preview is found, image won't be downloaded
 
-```
-$ reddit-rip -max-size=600 -max=20 r/LogicGateMemes              Logic Gates [ffbsit].jpg    [Done: 121.0KB]
+## use -prefer-preview instead of -download-preview 
+## to download original URL if no preview could be found
 
-Close enough [es6njb].jpg    [Done: 51.2KB]
+rrip -download-preview -preview-res=640 -log-links=meme.txt -log-links-format="{{final_url}} {{title}}" r/LogicGateMemes
 
-Well, technically… [er9r6y].jpg    [Done: 158.5KB]
-
-Naming Conventions [epqho9].jpg    [Done: 98.8KB]
-
-Elon Mux [ekysjs].jpg    [Done: 6.2KB]
-
-NOR Flag [ekm2ms].jpg    [Done: 187.0KB]
-
-We have to prepare boys [ekc3d8].png    [Done: 483.2KB]
-
-Romeo and Juliet [eh1m2j].jpg    [Done: 143.0KB]
-
-That extra input is important! [dztgzg].jpg    [Done: 137.9KB]
-
-Hmmmm [d8ge34].jpg    [Done: 42.5KB]
-
-Important Difference [d5wn3e].jpg    [Done: 130.6KB]
-
-What boolean algebraists sound like when they sleep [d4og58].png    [Done: 431.2KB]
-
-If Kira were a boolean algebraist [d4rpim].jpg    [Done: 42.9KB]
-
-high quality facebook meme [d4hl21].png    [Done: 260.3KB]
-
-Classic Thrash Logic [d3t5g3].jpg    [Done: 56.9KB]
-
-The first logic gates [d2nr07].png    [Done: 378.6KB]
-
-This made me giggle... [d1mefi].png    [Done: 61.2KB]
-
-Computer logic! [cwwjs4].jpg    [Done: 152.5KB]
-
-INvestiGATED, and i dont like my meme [ctj56l].png    [Too Large: 1.2MB]
-
-I hope you all appreciate this [bseze4].png    [Done: 87.1KB]
-
-logicdroids  [bs09g3].png    [Done: 211.6KB]
-
---------------------
-Processed Posts:  29
-Already Downloaded:  0
-Failed:  0
-Saved:  20
-Other:  9
---------------------
-Approx. Storage Used: 3.2MB
---------------------
-```
-
-## Another
+## Log all image links from r/ImaginaryLandscape
+## (Reddit shows last 600 or so.., not really "all")
 
 ```
-$ reddit-rip -sort=top-all -min-karma=6000 -max-size=600 -max=20 r/PhysicsMemes
-Island of stability where [jq6t10].gif    [Too Large: 31MB]
 
-made with paint [kncao1].png    [Too Large: 638KB]
+## Caveats
+* Can't handle crossposts etc.. when downloading preview image.
+* No support for downloading albums.
+* Terminal size detection works only on linux
+* Some options don't work together
+* Many other caveats I don't remember.
 
-I finally saw it irl :D [mkfvna].png    [Too Large: 918KB]
-
-Made during chemistry class. [k5utnz].jpg    [Done: 51KB]
-
-how to thought experiment [l2n9bw].jpg    [Done: 42KB]
-
-Thermal Physics test tomorrow. Wish me luck. [cv5rgt].jpg    [Done: 235KB]
-
-physics major [kjy78w].jpg    [Done: 17KB]
-
-6 marks [imdell].png    [Too Large: 2MB]
-
-Organic Chemistry books are basically a portfolio of hexagons [epu5ep].jpg    [Done: 87KB]
-
-
-Skipping posts with less points, since sort=top-all
---------------------
-Processed:  10
-Already Downloaded:  0
-Failed:  0
-Saved:  5
-Other:  5
---------------------
-```

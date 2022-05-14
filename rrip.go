@@ -42,9 +42,9 @@ type Options struct {
 	FlairContains, FlairNotContains  *regexp.Regexp
 	LinkContains, LinkNotContains    *regexp.Regexp
 	Search                           string
-	DownloadPreviewImage             bool
-	// Tui                              bool
-	PreviewRes int
+	DownloadPreview             bool
+	PreferPreview               bool
+	PreviewRes                       int
 }
 
 type ImagePreviewEntry struct {
@@ -60,7 +60,7 @@ type ImagePreview struct {
 
 type PostData struct {
 	Url, Name, Title  string
-	Ups, Score        int
+	Score        int
 	Subreddit, Author string
 	LinkFlairText     string
 	CreatedUtc        int64
@@ -445,19 +445,30 @@ func DownloadPost(post PostData) {
 
 	url := post.Url
 
-	if options.DownloadPreviewImage {
+	usePreview := func() bool {
 		log("Original URL: ", post.Url)
 		log("Choosing preview URL")
 		if len(post.Preview.Images) == 0 {
 			log("No preview found: ", quote(post.Title))
-			return
+			return false
 		}
 		preview := pickPreview(post.Preview.Images[0], options.PreviewRes)
 		if preview == nil {
 			log("No preview found: ", quote(post.Title))
-			return
+			return false
 		}
 		url = html.UnescapeString(preview.Url)
+		return true
+	}
+
+	if (options.DownloadPreview) {
+		if !usePreview() {
+			return;
+		}
+	} else if (options.PreferPreview) {
+		usePreview()
+	} else {
+		// proceed with URL found in the post
 	}
 
 	imageUrl, extension := CheckAndResolveImage(url)
@@ -482,7 +493,7 @@ func DownloadPost(post PostData) {
 			filename)
 	}
 
-	printName();
+	printName()
 
 	// check if already downloaded file
 	_, err := os.Stat(filename)
@@ -507,9 +518,9 @@ func DownloadPost(post PostData) {
 	var output *os.File = nil // don't create until needed
 
 	// Common error handling code
-	netError := func(kind string) {
+	netError := func(what string) {
 		stats.Failed += 1
-		eprintf("    [" + kind + " Error: " + err.Error() + "]\n")
+		eprintf("    [" + what + " Error: " + err.Error() + "]\n")
 		if output != nil {
 			// transfer errors when file was already created
 			log("Try remove file: ", filename)
@@ -568,8 +579,8 @@ func DownloadPost(post PostData) {
 	defer output.Close()
 
 	out := ProgressWriter{Writer: output, Callback: func(i int64) {
-		printName();
-		eprintf("    [%s/%s]", size(i), size(length));
+		printName()
+		eprintf("    [%s/%s]", size(i), size(length))
 	}}
 
 	// do a GET request
@@ -581,7 +592,7 @@ func DownloadPost(post PostData) {
 	defer fullResponse.Body.Close()
 
 	n, err := io.Copy(&out, fullResponse.Body)
-	printName();
+	printName()
 	// add n to how much diskspace is consumed even if there's an error
 	// because it would give a more appropriate approximation of bandwidth consumption
 	// But if you're using that option to limit data usage, give 80% of airtime you can use
@@ -625,8 +636,8 @@ func main() {
 	var linkContains, linkNotContains string
 
 	// option parsing
-	flag.BoolVar(&options.Debug, "v", false, "Enable verbose output")
-	flag.BoolVar(&options.DryRun, "d", false, "DryRun i.e just print urls and names")
+	flag.BoolVar(&options.Debug, "v", false, "Enable verbose output (devel)")
+	flag.BoolVar(&options.DryRun, "d", false, "DryRun i.e just print urls and names (devel)")
 	flag.BoolVar(&options.AllowSpecialChars, "allow-special-chars", false,
 		"Allow all characters in filenames except / and \\, "+
 			"And windows-special filenames like NUL")
@@ -660,8 +671,9 @@ func main() {
 		"posted link does not contain substring matching given regex")
 
 	flag.StringVar(&options.Search, "search", "", "Search for given term")
-	// flag.BoolVar(&options.Tui, "tui", false, "Use basic TUI");
-	flag.BoolVar(&options.DownloadPreviewImage, "download-preview", false,
+	flag.BoolVar(&options.PreferPreview, "prefer-preview", false,
+		"Prefer reddit preview image when possible")
+	flag.BoolVar(&options.DownloadPreview, "download-preview", false,
 		"download reddit preview image instead of posted URL")
 	flag.IntVar(&options.PreviewRes, "preview-res", -1,
 		"Width of preview to download, eg: 640, 960, 1080")
@@ -697,9 +709,14 @@ func main() {
 		}
 	}
 
-	if options.PreviewRes > 0 && !options.DownloadPreviewImage {
-		fatal("-download-preview option should be provided to " +
-			"use -max-preview-res")
+	if options.PreviewRes > 0 && !options.DownloadPreview &&
+			!options.PreferPreview {
+		fatal("-download-preview or -prefer-preview should be used with " +
+			"-preview-res")
+	}
+
+	if options.PreferPreview && options.DownloadPreview {
+		fatal("Use only one of -prefer-preview and -download-preview")
 	}
 
 	og := options.OgType
