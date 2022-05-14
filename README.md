@@ -33,6 +33,10 @@ cd rrip
 go build && go install
 ```
 
+or
+
+Download from Release section and unpack the binary executable somewhere in your `PATH`
+
 ## Note about windows
 I wrote this on Linux. May not work well on Windows. A best-effort default option is enabled to sanitize filenames so that they can be saved on Windows / Android. But don't blame me if you face some quirks of Windows OS. 
 
