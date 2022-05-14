@@ -96,14 +96,14 @@ Usage: rrip <options> <r/subreddit>
 ## tl;dr
 
 ```sh
-## Download only 200KB+ files from r/Wallpaper
+## Download only <200KB files from r/Wallpaper
 rrip -max-size=200 r/Wallpaper
 
 ## Download all time top from r/WildLifePhotography, without exceeding 20MB storage or 50 files
 rrip -max-storage=20 -max-files=50 -sort=top-all r/WildlifePhotography
 
 ## Search "Neon" on r/AMOLEDBackgrounds and download top 20, sorted by top voted in past one year
-rrip -search="Neon" -max-files=20 r/AMOLEDBackgrounds
+rrip -search="Neon" -max-files=20 -sort=top-year r/AMOLEDBackgrounds
 
 ## Download memes from r/LogicGateMemes, download reddit previews (640p)
 ## instead of original image, for space savings.
