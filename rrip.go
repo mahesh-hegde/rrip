@@ -143,16 +143,23 @@ func fatal(val ...interface{}) {
 	os.Exit(1)
 }
 
-func eprintln(vals ...interface{}) {
-	fmt.Fprintln(os.Stderr, vals...)
+func eprintln(vals ...interface{}) (int, error){
+	return fmt.Fprintln(os.Stderr, vals...)
 }
 
-func eprintf(format string, vals ...interface{}) {
-	fmt.Fprintf(os.Stderr, format, vals...)
+func eprintf(format string, vals ...interface{}) (int, error) {
+	return fmt.Fprintf(os.Stderr, format, vals...)
 }
 
-func eprint(vals ...interface{}) {
-	fmt.Fprint(os.Stderr, vals...)
+func eprint(vals ...interface{}) (int, error) {
+	return fmt.Fprint(os.Stderr, vals...)
+}
+
+func max(a, b int) int {
+	if (a > b) {
+		return a;
+	}
+	return b;
 }
 
 func check(e error, extra ...interface{}) {
@@ -312,6 +319,14 @@ func FetchUrlWithMethod(url, method string, acceptMimeType string) (*http.Respon
 
 func FetchUrl(url string) (*http.Response, error) {
 	return FetchUrlWithMethod(url, "GET", "")
+}
+
+func padString(s string, min int) string {
+	sl := len(s)
+	if (sl >= min) {
+		return s
+	}
+	return s + strings.Repeat(" ", min - sl)
 }
 
 // downloads all images reachable from reddit.com/<path>.json
@@ -578,9 +593,13 @@ func DownloadPost(post PostData) {
 	}
 	defer output.Close()
 
+	maxCharsOnRight := 0
+
 	out := ProgressWriter{Writer: output, Callback: func(i int64) {
 		printName()
-		eprintf("    [%s/%s]", size(i), size(length))
+		progress := fmt.Sprintf("    [%s/%s]", size(i), size(length))
+		_n, _ := eprintf("%-*s", maxCharsOnRight, progress)
+		maxCharsOnRight = max(_n, maxCharsOnRight)
 	}}
 
 	// do a GET request
@@ -605,7 +624,8 @@ func DownloadPost(post PostData) {
 
 	// Transfer success I hope
 	// write stats
-	eprintf("    [Done: %s]\n", size(n))
+	done := fmt.Sprintf("    [Complete: %s]\n", size(n))
+	eprintf("%*s", maxCharsOnRight, done);
 	stats.Saved += 1
 	if stats.Saved == options.MaxFiles {
 		Finish()
