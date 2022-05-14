@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"regexp"
 )
 
 const (
@@ -31,11 +32,20 @@ type Stats struct {
 
 type Options struct {
 	After, Sort, UserAgent, Folder   string
-	Limit, MaxFiles, MinScore        int
+	EntriesLimit, MaxFiles, MinScore        int
 	Debug, DryRun, AllowSpecialChars bool
 	MaxStorage, MaxSize              int64
 	OgType                           string
-	LogLinksFile                     io.Writer
+	LogLinksFile                     io.WriteCloser
+	LogLinksFormat                   string
+	TitleContains, TitleNotContains  *regexp.Regexp
+	FlairContains, FlairNotContains  *regexp.Regexp
+	LinkContains, LinkNotContains    *regexp.Regexp
+	Search                           string
+	DownloadPreviewImage             bool
+	CookiePath                       string
+	Tui                              bool
+	MaxPreviewRes                    int
 }
 
 type ImagePreviewEntry struct {
@@ -87,6 +97,21 @@ var client = http.Client{
 	Transport: &http.Transport{
 		TLSNextProto: map[string]func(authority string, c *tls.Conn) http.RoundTripper{},
 	},
+}
+
+var defaultLogLinkFormat = "{{final_url}}"
+
+func formatFromPost(format string, post *PostData, finalUrl string) string {
+	replacer := strings.NewReplacer(
+		"{{posted_url}}", post.Url,
+		"{{final_url}}", finalUrl,
+		"{{subreddit}}", post.Subreddit,
+		"{{id}}", strings.TrimPrefix(post.Name, "t3_"),
+		"{{author}}", post.Author,
+		"{{score}}", strconv.Itoa(post.Score),
+		"{{title}}", post.Title,
+	)
+	return replacer.Replace(format);
 }
 
 func coalesce(a, b string) string {
@@ -173,6 +198,7 @@ func HandlePosts(body io.ReadCloser, handler func(PostData)) (last string) {
 	for _, post := range apiResponse.Data.Children {
 		stats.Processed += 1
 		handler(post.Data)
+		log(horizontalDashedLine)
 		last = post.Data.Name
 	}
 	return last
@@ -230,7 +256,6 @@ func CheckAndResolveImage(linkString string) (finalLink string, extension string
 	if options.OgType != "" {
 		log("REQUEST PAGE: " + linkString)
 		response, err := FetchUrl(linkString)
-		log("Response Headers=", response.Header)
 		if err != nil {
 			log(err.Error())
 			return "", ""
@@ -259,8 +284,6 @@ func FetchUrlWithMethod(url, method string, acceptMimeType string) (*http.Respon
 		req.Header.Add("Accept", acceptMimeType)
 	}
 
-	log("Headers: ", req.Header)
-	log("Protocol: ", req.Proto)
 	response, err := client.Do(req)
 
 	if err != nil {
@@ -274,40 +297,60 @@ func FetchUrl(url string) (*http.Response, error) {
 }
 
 // downloads all images reachable from reddit.com/<path>.json
-func TraversePages(path string, handler func(PostData)) {
+func Traverse(path string, handler func(PostData)) {
+	query := url.Values{}
+
 	unsuffixedPath := strings.TrimSuffix(path, "/")
-	if unsuffixedPath == "" {
-		options.Sort = "hot"
-	}
 	target := "https://www.reddit.com/" + unsuffixedPath
 
+	// front page URL
+	if unsuffixedPath == "" && options.Search == "" && options.Sort == "" {
+		options.Sort = "hot"
+	}
+
 	after := options.After
+
 	// Handle sort options
-	topBy := ""
+	var sortString, timePeriod string
 	switch options.Sort {
 	case "hot", "new", "rising":
-		target += "/" + options.Sort
+		sortString = options.Sort
 	case "top-hour", "top-day", "top-month", "top-year", "top-all":
-		target += "/top"
-		topBy = strings.TrimPrefix(options.Sort, "top-")
+		sortString = "top"
+		timePeriod = strings.TrimPrefix(options.Sort, "top-")
 	case "":
 		_ = "best" // do nothing
 	default:
 		fatal("Invalid option passed to sort")
 	}
-	target += ".json?limit=" + strconv.Itoa(options.Limit)
-	// for sort by top voted
-	if topBy != "" {
-		target += "&t=" + topBy
+
+	if (options.Search == "") {
+		target += "/" + sortString;
+	} else {
+		target += "/search"
+		query.Set("sort", sortString);
 	}
+
+	query.Set("limit", fmt.Sprint(options.EntriesLimit));
+
+	if timePeriod != "" {
+		query.Set("t", timePeriod)
+	}
+
+	if options.Search != "" {
+		query.Set("q", options.Search)
+		query.Set("restrict_sr", "true");
+	}
+
+	target += ".json?" + query.Encode()
+
 	for {
-		var link = target // final link
+		link := target // final link
 		if after != "" {
 			link += "&after=" + after
 		}
-		log("REQUEST: ", link)
+		log("Request: ", link)
 		response, err := FetchUrlWithMethod(link, "GET", "application/json")
-		log("Response Headers=", response.Header)
 		check(err, "Cannot get JSON response")
 		defer response.Body.Close()
 
@@ -319,12 +362,59 @@ func TraversePages(path string, handler func(PostData)) {
 	}
 }
 
+func skipByRegexMatch(re *regexp.Regexp, s string) bool {
+	if re != nil {
+		return re.MatchString(s);
+	}
+	// if re = nil, don't skip anything
+	return false;
+}
+
+func chooseByRegexMatch(re *regexp.Regexp, s string) bool {
+	if re != nil {
+		return re.MatchString(s);
+	}
+	// if re = nil, choose everything
+	return true;
+}
+
 func DownloadPost(post PostData) {
 	title := strings.TrimSpace(strings.ReplaceAll(post.Title, "/", "|"))
 	title = html.UnescapeString(title) // &amp; etc.. are escaped in json
 	if len(title) > 194 {
 		title = title[:192] + ".."
 	}
+
+	if !chooseByRegexMatch(options.TitleContains, post.Title) {
+		log("Title not match regex: \"", title, '"')
+		return;
+	}
+
+	if !chooseByRegexMatch(options.FlairContains, post.LinkFlairText) {
+		log("Flair not match regex: \"", post.LinkFlairText, '"')
+		return;
+	}
+
+	if !chooseByRegexMatch(options.LinkContains, post.Url) {
+		log("Link not match regex: \"", post.Url, '"')
+		return;
+	}
+
+	if skipByRegexMatch(options.TitleNotContains, post.Title) {
+		log("Title skipped by regex: \"", title, '"')
+		return;
+	}
+
+	if skipByRegexMatch(options.FlairNotContains, post.LinkFlairText) {
+		log("Flair skipped by regex: \"", post.LinkFlairText, '"')
+		return;
+	}
+
+	if skipByRegexMatch(options.LinkNotContains, post.Url) {
+		log("Posted link skipped by regex: \"", post.Url, '"')
+		return;
+	}
+
 	if post.Score < options.MinScore {
 		log("Skipped due to less score:", title,
 			"| Score:", post.Score, "|", post.Url, "\n")
@@ -335,13 +425,14 @@ func DownloadPost(post PostData) {
 		return
 	}
 
-	if options.LogLinksFile != nil {
-		fmt.Fprintln(options.LogLinksFile, post.Url)
-	}
 	imageUrl, extension := CheckAndResolveImage(post.Url)
 	if imageUrl == "" {
 		log("Skip non-imagelike entry: ", title, " | ", post.Url)
 		return
+	}
+	if options.LogLinksFile != nil {
+		fmt.Fprintln(options.LogLinksFile,
+			formatFromPost(options.LogLinksFormat, &post, imageUrl))
 	}
 	filename := title + " [" + strings.TrimPrefix(post.Name, "t3_") +
 		"]" + extension
@@ -423,14 +514,13 @@ func DownloadPost(post PostData) {
 	}
 
 	// Create file
-	log("  [Creating file]")
 	downloadingFilename = filename
 	defer func() {
 		downloadingFilename = ""
 	}()
 	output, err = os.Create(filename)
 	if err != nil {
-		eprintf("    [Cannot create file]\n")
+		eprintf(" [Can't create file]\n")
 		stats.Failed += 1
 		return
 	}
@@ -485,6 +575,10 @@ func main() {
 	flag.BoolVar(&help, "help", false, "Show this help message")
 	var logLinksTo string
 	var err error
+	var titleContains, titleNotContains string;
+	var flairContains, flairNotContains string;
+	var linkContains, linkNotContains string;
+
 	// option parsing
 	flag.BoolVar(&options.Debug, "v", false, "Enable verbose output")
 	flag.BoolVar(&options.DryRun, "d", false, "DryRun i.e just print urls and names")
@@ -497,12 +591,36 @@ func main() {
 	flag.Int64Var(&options.MaxSize, "max-size", -1, "Max size of media file in KB, -1 for no limit")
 	flag.StringVar(&options.Folder, "folder", "", "Target folder name")
 	flag.StringVar(&logLinksTo, "log-links", "", "Log media links to given file")
+	flag.StringVar(&options.LogLinksFormat, "log-links-format", "{{final_url}}", "Format of links logged. "+
+		"allowed placeholders: {{final_url}}, {{posted_url}}, {{id}}, {{author}}, {{title}}, {{score}}")
 	flag.StringVar(&options.OgType, "og-type", "", "Look Up for a media link in page's og:property"+
-		" if link itself is not image/video (experimental) supported: video, image, any")
+		" if link itself is not image/video (experimental). supported values: video, image, any")
 	flag.StringVar(&options.Sort, "sort", "", "Sort: best|hot|new|rising|top-<all|year|month|week|day>")
 	flag.IntVar(&options.MaxFiles, "max-files", -1, "Max number of files to download (+ve), -1 for no limit")
 	flag.IntVar(&options.MinScore, "min-score", 0, "Minimum score of the post to download")
-	flag.IntVar(&options.Limit, "l", 100, "Number of entries to fetch in one API request (devel)")
+	flag.IntVar(&options.EntriesLimit, "entries-limit", 100, "Number of entries to fetch in one API request (devel)")
+
+	flag.StringVar(&titleContains, "title-contains", "", "Download if "+
+		"title contains substring matching given regex")
+	flag.StringVar(&flairContains, "flair-contains", "", "Download if "+
+		"flair contains substring matching given regex")
+	flag.StringVar(&linkContains, "link-contains", "", "Download if "+
+		"posted link contains substring matching given regex")
+
+	flag.StringVar(&titleNotContains, "title-not-contains", "", "Download if "+
+		"title does not contain substring matching given regex")
+	flag.StringVar(&flairNotContains, "flair-not-contains", "", "Download if "+
+		"flair does not contain substring matching given regex")
+	flag.StringVar(&linkNotContains, "link-not-contains", "", "Download if "+
+		"posted link does not contain substring matching given regex")
+
+	flag.StringVar(&options.Search, "search", "", "Search for given term")
+	// flag.BoolVar(&options.Tui, "tui", false, "Use basic TUI");
+	flag.BoolVar(&options.DownloadPreviewImage, "download-preview", false,
+		"download reddit preview image instead of posted URL");
+	flag.IntVar(&options.MaxPreviewRes, "max-preview-res", -1,
+		"Max resolution width of preview to download, eg: 640");
+
 	flag.Parse()
 	args := flag.Args()
 	if len(args) != 1 || help {
@@ -512,6 +630,7 @@ func main() {
 	}
 
 	options.LogLinksFile = createLinksFile(logLinksTo)
+	defer options.LogLinksFile.Close()
 
 	path := strings.TrimSuffix(args[0], "/")
 
@@ -525,6 +644,17 @@ func main() {
 		if value < 1 && value != -1 {
 			fatal("Invalid value for option " + option)
 		}
+	}
+
+	if options.DryRun {
+		if options.MaxSize != -1 || options.MaxStorage != -1 {
+			fatal("Can't combine image-size based options with dry run")
+		}
+	}
+
+	if options.MaxPreviewRes > 0 && !options.DownloadPreviewImage {
+		fatal("-download-preview option should be provided to "+
+			"use -max-preview-res")
 	}
 
 	og := options.OgType
@@ -548,6 +678,21 @@ func main() {
 		options.MaxSize *= 1000 // KB
 	}
 
+	regexVals := map[**regexp.Regexp]string{
+		&options.TitleContains: titleContains,
+		&options.TitleNotContains: titleNotContains,
+		&options.FlairContains: flairContains,
+		&options.FlairNotContains: flairNotContains,
+		&options.LinkContains: linkContains,
+		&options.LinkNotContains: linkNotContains,
+	}
+
+	for re, opt := range regexVals {
+		if opt != "" {
+			*re = regexp.MustCompile(opt)
+		}
+	}
+
 	// Create folder
 	options.Folder = coalesce(options.Folder,
 		strings.TrimPrefix(strings.ReplaceAll(path, "/", "."), "r."))
@@ -567,7 +712,7 @@ func main() {
 	interrupt = make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	go TraversePages(path, func(post PostData) {
+	go Traverse(path, func(post PostData) {
 		DownloadPost(post)
 	})
 
