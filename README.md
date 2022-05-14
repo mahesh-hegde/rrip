@@ -115,8 +115,9 @@ rrip -search="Neon" -max-files=20 r/AMOLEDBackgrounds
 rrip -download-preview -preview-res=640 -log-links=meme.txt -log-links-format="{{final_url}} {{title}}" r/LogicGateMemes
 
 ## Log all image links from r/ImaginaryLandscape
+## without downloading files, using -d (dry run) option.
 ## (Reddit shows last 600 or so.., not really "all")
-
+rrip -d -log-links=imaginary_landscapes.txt -log-links-format="{{score}} {{final_url}} {{quoted_title}} {{author}}" r/ImaginaryLandscapes
 ```
 
 ## Caveats
