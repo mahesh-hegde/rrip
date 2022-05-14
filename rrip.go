@@ -11,9 +11,9 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"regexp"
 	"strconv"
 	"strings"
-	"regexp"
 )
 
 const (
@@ -21,7 +21,7 @@ const (
 	DefaultLimit = 100
 )
 
-var terminalColumns = getTerminalSize();
+var terminalColumns = getTerminalSize()
 
 var horizontalDashedLine = strings.Repeat("-", terminalColumns)
 
@@ -32,7 +32,7 @@ type Stats struct {
 
 type Options struct {
 	After, Sort, UserAgent, Folder   string
-	EntriesLimit, MaxFiles, MinScore        int
+	EntriesLimit, MaxFiles, MinScore int
 	Debug, DryRun, AllowSpecialChars bool
 	MaxStorage, MaxSize              int64
 	OgType                           string
@@ -43,9 +43,8 @@ type Options struct {
 	LinkContains, LinkNotContains    *regexp.Regexp
 	Search                           string
 	DownloadPreviewImage             bool
-	CookiePath                       string
-	Tui                              bool
-	PreviewRes                    int
+	// Tui                              bool
+	PreviewRes int
 }
 
 type ImagePreviewEntry struct {
@@ -103,12 +102,12 @@ var defaultLogLinkFormat = "{{final_url}}"
 
 func pickPreview(choices ImagePreview, width int) *ImagePreviewEntry {
 	if width == -1 {
-		return &choices.Source;
+		return &choices.Source
 	}
 	for _, preview := range choices.Resolutions {
 		if preview.Width == width {
 			result := preview
-			return &result;
+			return &result
 		}
 	}
 	return nil
@@ -125,7 +124,7 @@ func formatFromPost(format string, post *PostData, finalUrl string) string {
 		"{{title}}", post.Title,
 		"{{quoted_title}}", strconv.Quote(post.Title),
 	)
-	return replacer.Replace(format);
+	return replacer.Replace(format)
 }
 
 func coalesce(a, b string) string {
@@ -136,7 +135,7 @@ func coalesce(a, b string) string {
 }
 
 func quote(s string) string {
-	return strconv.Quote(s);
+	return strconv.Quote(s)
 }
 
 func fatal(val ...interface{}) {
@@ -343,14 +342,14 @@ func Traverse(path string, handler func(PostData)) {
 		fatal("Invalid option passed to sort")
 	}
 
-	if (options.Search == "") {
-		target += "/" + sortString;
+	if options.Search == "" {
+		target += "/" + sortString
 	} else {
 		target += "/search"
-		query.Set("sort", sortString);
+		query.Set("sort", sortString)
 	}
 
-	query.Set("limit", fmt.Sprint(options.EntriesLimit));
+	query.Set("limit", fmt.Sprint(options.EntriesLimit))
 
 	if timePeriod != "" {
 		query.Set("t", timePeriod)
@@ -358,7 +357,7 @@ func Traverse(path string, handler func(PostData)) {
 
 	if options.Search != "" {
 		query.Set("q", options.Search)
-		query.Set("restrict_sr", "true");
+		query.Set("restrict_sr", "true")
 	}
 
 	target += ".json?" + query.Encode()
@@ -383,18 +382,18 @@ func Traverse(path string, handler func(PostData)) {
 
 func skipByRegexMatch(re *regexp.Regexp, s string) bool {
 	if re != nil {
-		return re.MatchString(s);
+		return re.MatchString(s)
 	}
 	// if re = nil, don't skip anything
-	return false;
+	return false
 }
 
 func chooseByRegexMatch(re *regexp.Regexp, s string) bool {
 	if re != nil {
-		return re.MatchString(s);
+		return re.MatchString(s)
 	}
 	// if re = nil, choose everything
-	return true;
+	return true
 }
 
 func DownloadPost(post PostData) {
@@ -406,32 +405,32 @@ func DownloadPost(post PostData) {
 
 	if !chooseByRegexMatch(options.TitleContains, post.Title) {
 		log("Title not match regex:", quote(post.Title))
-		return;
+		return
 	}
 
 	if !chooseByRegexMatch(options.FlairContains, post.LinkFlairText) {
 		log("Flair not match regex:", quote(post.Title), quote(post.LinkFlairText))
-		return;
+		return
 	}
 
 	if !chooseByRegexMatch(options.LinkContains, post.Url) {
 		log("Link not match regex:", quote(post.Title), post.Url)
-		return;
+		return
 	}
 
 	if skipByRegexMatch(options.TitleNotContains, post.Title) {
 		log("Title skipped by regex: ", quote(post.Title))
-		return;
+		return
 	}
 
 	if skipByRegexMatch(options.FlairNotContains, post.LinkFlairText) {
-		log("Flair skipped by regex: ", quote(post.Title), quote(post.LinkFlairText));
-		return;
+		log("Flair skipped by regex: ", quote(post.Title), quote(post.LinkFlairText))
+		return
 	}
 
 	if skipByRegexMatch(options.LinkNotContains, post.Url) {
 		log("Posted link skipped by regex: ", quote(post.Title), post.Url)
-		return;
+		return
 	}
 
 	if post.Score < options.MinScore {
@@ -447,16 +446,16 @@ func DownloadPost(post PostData) {
 	url := post.Url
 
 	if options.DownloadPreviewImage {
-		log("Original URL: ", post.Url);
+		log("Original URL: ", post.Url)
 		log("Choosing preview URL")
-		if (len(post.Preview.Images) == 0) {
-			log("No preview found: ", quote(post.Title));
-			return;
+		if len(post.Preview.Images) == 0 {
+			log("No preview found: ", quote(post.Title))
+			return
 		}
-		preview := pickPreview(post.Preview.Images[0], options.PreviewRes);
+		preview := pickPreview(post.Preview.Images[0], options.PreviewRes)
 		if preview == nil {
-			log("No preview found: ", quote(post.Title));
-			return;
+			log("No preview found: ", quote(post.Title))
+			return
 		}
 		url = html.UnescapeString(preview.Url)
 	}
@@ -477,7 +476,13 @@ func DownloadPost(post PostData) {
 	if imageUrl != url {
 		log("->", imageUrl)
 	}
-	eprintf("%-*.*s", terminalColumns-24, terminalColumns-24, filename)
+
+	printName := func() {
+		eprintf("\r%-*.*s", terminalColumns-24, terminalColumns-24,
+			filename)
+	}
+
+	printName();
 
 	// check if already downloaded file
 	_, err := os.Stat(filename)
@@ -562,6 +567,11 @@ func DownloadPost(post PostData) {
 	}
 	defer output.Close()
 
+	out := ProgressWriter{Writer: output, Callback: func(i int64) {
+		printName();
+		eprintf("    [%s/%s]", size(i), size(length));
+	}}
+
 	// do a GET request
 	fullResponse, err := FetchUrl(imageUrl)
 	if err != nil {
@@ -570,9 +580,8 @@ func DownloadPost(post PostData) {
 	}
 	defer fullResponse.Body.Close()
 
-	// Copy
-	n, err := io.Copy(output, fullResponse.Body)
-
+	n, err := io.Copy(&out, fullResponse.Body)
+	printName();
 	// add n to how much diskspace is consumed even if there's an error
 	// because it would give a more appropriate approximation of bandwidth consumption
 	// But if you're using that option to limit data usage, give 80% of airtime you can use
@@ -611,9 +620,9 @@ func main() {
 	flag.BoolVar(&help, "help", false, "Show this help message")
 	var logLinksTo string
 	var err error
-	var titleContains, titleNotContains string;
-	var flairContains, flairNotContains string;
-	var linkContains, linkNotContains string;
+	var titleContains, titleNotContains string
+	var flairContains, flairNotContains string
+	var linkContains, linkNotContains string
 
 	// option parsing
 	flag.BoolVar(&options.Debug, "v", false, "Enable verbose output")
@@ -653,9 +662,9 @@ func main() {
 	flag.StringVar(&options.Search, "search", "", "Search for given term")
 	// flag.BoolVar(&options.Tui, "tui", false, "Use basic TUI");
 	flag.BoolVar(&options.DownloadPreviewImage, "download-preview", false,
-		"download reddit preview image instead of posted URL");
+		"download reddit preview image instead of posted URL")
 	flag.IntVar(&options.PreviewRes, "preview-res", -1,
-		"Width of preview to download, eg: 640, 960, 1080");
+		"Width of preview to download, eg: 640, 960, 1080")
 
 	flag.Parse()
 	args := flag.Args()
@@ -689,7 +698,7 @@ func main() {
 	}
 
 	if options.PreviewRes > 0 && !options.DownloadPreviewImage {
-		fatal("-download-preview option should be provided to "+
+		fatal("-download-preview option should be provided to " +
 			"use -max-preview-res")
 	}
 
@@ -715,12 +724,12 @@ func main() {
 	}
 
 	regexVals := map[**regexp.Regexp]string{
-		&options.TitleContains: titleContains,
+		&options.TitleContains:    titleContains,
 		&options.TitleNotContains: titleNotContains,
-		&options.FlairContains: flairContains,
+		&options.FlairContains:    flairContains,
 		&options.FlairNotContains: flairNotContains,
-		&options.LinkContains: linkContains,
-		&options.LinkNotContains: linkNotContains,
+		&options.LinkContains:     linkContains,
+		&options.LinkNotContains:  linkNotContains,
 	}
 
 	for re, opt := range regexVals {
