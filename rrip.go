@@ -45,7 +45,7 @@ type Options struct {
 	DownloadPreviewImage             bool
 	CookiePath                       string
 	Tui                              bool
-	MaxPreviewRes                    int
+	PreviewRes                    int
 }
 
 type ImagePreviewEntry struct {
@@ -66,7 +66,7 @@ type PostData struct {
 	LinkFlairText     string
 	CreatedUtc        int64
 	Preview           struct {
-		images []ImagePreview
+		Images []ImagePreview
 	}
 }
 
@@ -101,6 +101,19 @@ var client = http.Client{
 
 var defaultLogLinkFormat = "{{final_url}}"
 
+func pickPreview(choices ImagePreview, width int) *ImagePreviewEntry {
+	if width == -1 {
+		return &choices.Source;
+	}
+	for _, preview := range choices.Resolutions {
+		if preview.Width == width {
+			result := preview
+			return &result;
+		}
+	}
+	return nil
+}
+
 func formatFromPost(format string, post *PostData, finalUrl string) string {
 	replacer := strings.NewReplacer(
 		"{{posted_url}}", post.Url,
@@ -110,6 +123,7 @@ func formatFromPost(format string, post *PostData, finalUrl string) string {
 		"{{author}}", post.Author,
 		"{{score}}", strconv.Itoa(post.Score),
 		"{{title}}", post.Title,
+		"{{quoted_title}}", strconv.Quote(post.Title),
 	)
 	return replacer.Replace(format);
 }
@@ -119,6 +133,10 @@ func coalesce(a, b string) string {
 		return b
 	}
 	return a
+}
+
+func quote(s string) string {
+	return strconv.Quote(s);
 }
 
 func fatal(val ...interface{}) {
@@ -201,6 +219,7 @@ func HandlePosts(body io.ReadCloser, handler func(PostData)) (last string) {
 		log(horizontalDashedLine)
 		last = post.Data.Name
 	}
+	log(horizontalDashedLine)
 	return last
 }
 
@@ -386,32 +405,32 @@ func DownloadPost(post PostData) {
 	}
 
 	if !chooseByRegexMatch(options.TitleContains, post.Title) {
-		log("Title not match regex: \"", title, '"')
+		log("Title not match regex:", quote(post.Title))
 		return;
 	}
 
 	if !chooseByRegexMatch(options.FlairContains, post.LinkFlairText) {
-		log("Flair not match regex: \"", post.LinkFlairText, '"')
+		log("Flair not match regex:", quote(post.Title), quote(post.LinkFlairText))
 		return;
 	}
 
 	if !chooseByRegexMatch(options.LinkContains, post.Url) {
-		log("Link not match regex: \"", post.Url, '"')
+		log("Link not match regex:", quote(post.Title), post.Url)
 		return;
 	}
 
 	if skipByRegexMatch(options.TitleNotContains, post.Title) {
-		log("Title skipped by regex: \"", title, '"')
+		log("Title skipped by regex: ", quote(post.Title))
 		return;
 	}
 
 	if skipByRegexMatch(options.FlairNotContains, post.LinkFlairText) {
-		log("Flair skipped by regex: \"", post.LinkFlairText, '"')
+		log("Flair skipped by regex: ", quote(post.Title), quote(post.LinkFlairText));
 		return;
 	}
 
 	if skipByRegexMatch(options.LinkNotContains, post.Url) {
-		log("Posted link skipped by regex: \"", post.Url, '"')
+		log("Posted link skipped by regex: ", quote(post.Title), post.Url)
 		return;
 	}
 
@@ -425,9 +444,26 @@ func DownloadPost(post PostData) {
 		return
 	}
 
-	imageUrl, extension := CheckAndResolveImage(post.Url)
+	url := post.Url
+
+	if options.DownloadPreviewImage {
+		log("Original URL: ", post.Url);
+		log("Choosing preview URL")
+		if (len(post.Preview.Images) == 0) {
+			log("No preview found: ", quote(post.Title));
+			return;
+		}
+		preview := pickPreview(post.Preview.Images[0], options.PreviewRes);
+		if preview == nil {
+			log("No preview found: ", quote(post.Title));
+			return;
+		}
+		url = html.UnescapeString(preview.Url)
+	}
+
+	imageUrl, extension := CheckAndResolveImage(url)
 	if imageUrl == "" {
-		log("Skip non-imagelike entry: ", title, " | ", post.Url)
+		log("Skip non-imagelike entry: ", title, " | ", url)
 		return
 	}
 	if options.LogLinksFile != nil {
@@ -437,8 +473,8 @@ func DownloadPost(post PostData) {
 	filename := title + " [" + strings.TrimPrefix(post.Name, "t3_") +
 		"]" + extension
 	filename = removeSpecialChars(filename)
-	log("URL: ", post.Url, " | Ups:", post.Ups)
-	if imageUrl != post.Url {
+	log("URL: ", url, " | Score:", post.Score)
+	if imageUrl != url {
 		log("->", imageUrl)
 	}
 	eprintf("%-*.*s", terminalColumns-24, terminalColumns-24, filename)
@@ -618,8 +654,8 @@ func main() {
 	// flag.BoolVar(&options.Tui, "tui", false, "Use basic TUI");
 	flag.BoolVar(&options.DownloadPreviewImage, "download-preview", false,
 		"download reddit preview image instead of posted URL");
-	flag.IntVar(&options.MaxPreviewRes, "max-preview-res", -1,
-		"Max resolution width of preview to download, eg: 640");
+	flag.IntVar(&options.PreviewRes, "preview-res", -1,
+		"Width of preview to download, eg: 640, 960, 1080");
 
 	flag.Parse()
 	args := flag.Args()
@@ -652,7 +688,7 @@ func main() {
 		}
 	}
 
-	if options.MaxPreviewRes > 0 && !options.DownloadPreviewImage {
+	if options.PreviewRes > 0 && !options.DownloadPreviewImage {
 		fatal("-download-preview option should be provided to "+
 			"use -max-preview-res")
 	}
