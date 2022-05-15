@@ -19,68 +19,12 @@ import (
 const (
 	UserAgent    = "rrip / Go CLI Tool"
 	DefaultLimit = 100
+	defaultLogLinkFormat = "{{final_url}}"
 )
 
 var terminalColumns = getTerminalSize()
 
 var horizontalDashedLine = strings.Repeat("-", terminalColumns)
-
-type Stats struct {
-	Processed, Saved, Failed, Repeated int
-	CopiedBytes                        int64
-}
-
-type Options struct {
-	After, Sort, UserAgent, Folder   string
-	EntriesLimit, MaxFiles, MinScore int
-	Debug, DryRun, AllowSpecialChars bool
-	MaxStorage, MaxSize              int64
-	OgType                           string
-	LogLinksFile                     io.WriteCloser
-	LogLinksFormat                   string
-	TitleContains, TitleNotContains  *regexp.Regexp
-	FlairContains, FlairNotContains  *regexp.Regexp
-	LinkContains, LinkNotContains    *regexp.Regexp
-	Search                           string
-	DownloadPreview                  bool
-	PreferPreview                    bool
-	PreviewRes                       int
-}
-
-type ImagePreviewEntry struct {
-	Url    string
-	Width  int
-	Height int
-}
-
-type ImagePreview struct {
-	Source      ImagePreviewEntry
-	Resolutions []ImagePreviewEntry
-}
-
-type PostData struct {
-	Url, Name, Title  string
-	Score             int
-	Subreddit, Author string
-	LinkFlairText     string
-	CreatedUtc        int64
-	Preview           struct {
-		Images []ImagePreview
-	}
-}
-
-type Post struct {
-	Data PostData
-}
-
-type ApiData struct {
-	After    string
-	Children []Post
-}
-
-type ApiResponse struct {
-	Data ApiData
-}
 
 var stats Stats
 var options Options
@@ -101,8 +45,6 @@ var client = http.Client{
 		TLSNextProto: map[string]func(authority string, c *tls.Conn) http.RoundTripper{},
 	},
 }
-
-var defaultLogLinkFormat = "{{final_url}}"
 
 func pickPreview(choices ImagePreview, width int) *ImagePreviewEntry {
 	if width == -1 {
@@ -129,71 +71,6 @@ func formatFromPost(format string, post *PostData, finalUrl string) string {
 		"{{quoted_title}}", strconv.Quote(post.Title),
 	)
 	return replacer.Replace(format)
-}
-
-func coalesce(a, b string) string {
-	if a == "" {
-		return b
-	}
-	return a
-}
-
-func quote(s string) string {
-	return strconv.Quote(s)
-}
-
-func fatal(val ...interface{}) {
-	fmt.Fprintln(os.Stderr, val...)
-	os.Exit(1)
-}
-
-func eprintln(vals ...interface{}) (int, error) {
-	return fmt.Fprintln(os.Stderr, vals...)
-}
-
-func eprintf(format string, vals ...interface{}) (int, error) {
-	return fmt.Fprintf(os.Stderr, format, vals...)
-}
-
-func eprint(vals ...interface{}) (int, error) {
-	return fmt.Fprint(os.Stderr, vals...)
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func check(e error, extra ...interface{}) {
-	if e != nil {
-		fmt.Fprintln(os.Stderr, extra...)
-		fatal(e.Error())
-	}
-}
-
-func log(vals ...interface{}) {
-	if options.Debug {
-		fmt.Fprintln(os.Stderr, vals...)
-	}
-}
-
-func size(bytes int64) string {
-	sizes := []int64{1000 * 1000 * 1000, 1000 * 1000, 1000}
-	names := []string{"GB", "MB", "KB"}
-
-	if bytes == -1 {
-		return "Unknown length"
-	}
-
-	for i, sz := range sizes {
-		if bytes > sz {
-			units := float64(bytes) / float64(sz)
-			return strconv.FormatFloat(units, 'f', 1, 64) + names[i]
-		}
-	}
-	return strconv.FormatInt(bytes, 10) + "B"
 }
 
 func PrintStat() {
@@ -284,7 +161,7 @@ func CheckAndResolveImage(linkString string) (finalLink string, extension string
 	// if ogType is given, read the link and get it's og:video or og:image
 	if options.OgType != "" {
 		log("REQUEST PAGE: " + linkString)
-		response, err := FetchUrl(linkString)
+		response, err := GetUrl(linkString)
 		if err != nil {
 			log(err.Error())
 			return "", ""
@@ -321,19 +198,10 @@ func FetchUrlWithMethod(url, method string, acceptMimeType string) (*http.Respon
 	return response, err
 }
 
-func FetchUrl(url string) (*http.Response, error) {
+func GetUrl(url string) (*http.Response, error) {
 	return FetchUrlWithMethod(url, "GET", "")
 }
 
-func padString(s string, min int) string {
-	sl := len(s)
-	if sl >= min {
-		return s
-	}
-	return s + strings.Repeat(" ", min-sl)
-}
-
-// downloads all images reachable from reddit.com/<path>.json
 func Traverse(path string, handler func(PostData)) {
 	query := url.Values{}
 
@@ -611,7 +479,7 @@ func DownloadPost(post PostData) {
 	}}
 
 	// do a GET request
-	fullResponse, err := FetchUrl(imageUrl)
+	fullResponse, err := GetUrl(imageUrl)
 	if err != nil {
 		netError("Request ")
 		return
