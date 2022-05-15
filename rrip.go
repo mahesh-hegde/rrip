@@ -90,6 +90,10 @@ var completion = make(chan bool)
 
 var downloadingFilename string
 
+// On windows, os.Remove() fails unless we close the open file
+// For that, we need to keep a reference for signal handler
+var outputFile *os.File
+
 // BugFix: with transparent HTTP/2, sometimes reddit servers send HTML instead of JSON
 // So create a custom client
 var client = http.Client{
@@ -513,7 +517,7 @@ func DownloadPost(post PostData) {
 	// check if already downloaded file
 	_, err := os.Stat(filename)
 	if err == nil {
-		eprint("    [Already Downloaded]\n")
+		eprint("    [Already Saved]\n")
 		stats.Repeated += 1
 		return
 	}
@@ -591,7 +595,11 @@ func DownloadPost(post PostData) {
 		stats.Failed += 1
 		return
 	}
-	defer output.Close()
+	outputFile = output
+	defer func() {
+		outputFile = nil
+		output.Close()
+	}()
 
 	maxCharsOnRight := 0
 
@@ -801,6 +809,9 @@ func main() {
 	select {
 	case <-interrupt:
 		eprintln("Interrupt received, Exiting...")
+		if outputFile != nil {
+			outputFile.Close()
+		}
 		if downloadingFilename != "" {
 			eprintf("Removing possibly incomplete file: '%s'\n", downloadingFilename)
 			os.Remove(downloadingFilename)
