@@ -555,7 +555,7 @@ func main() {
 	flag.StringVar(&titleContains, "title-contains", "", "Download if "+
 		"title contains substring matching given regex")
 	flag.StringVar(&flairContains, "flair-contains", "", "Download if "+
-		"flair contains substring matching given regex")
+		"flair contains substring matching given regex (works only if flair is plaintext)")
 	flag.StringVar(&linkContains, "link-contains", "", "Download if "+
 		"posted link contains substring matching given regex")
 
@@ -636,18 +636,18 @@ func main() {
 		options.MaxSize *= 1000 // KB
 	}
 
-	regexVals := map[**regexp.Regexp]string{
-		&options.TitleContains:    titleContains,
-		&options.TitleNotContains: titleNotContains,
-		&options.FlairContains:    flairContains,
-		&options.FlairNotContains: flairNotContains,
-		&options.LinkContains:     linkContains,
-		&options.LinkNotContains:  linkNotContains,
+	regexVals := []struct{re **regexp.Regexp; opt string}{
+		{&options.TitleContains,    titleContains},
+		{&options.TitleNotContains, titleNotContains},
+		{&options.FlairContains,    flairContains},
+		{&options.FlairNotContains, flairNotContains},
+		{&options.LinkContains,     linkContains},
+		{&options.LinkNotContains,  linkNotContains},
 	}
 
-	for re, opt := range regexVals {
-		if opt != "" {
-			*re = regexp.MustCompile(opt)
+	for _, rv := range regexVals {
+		if rv.opt != "" {
+			*(rv.re) = regexp.MustCompile(rv.opt)
 		}
 	}
 
