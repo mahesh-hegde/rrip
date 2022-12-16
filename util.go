@@ -86,4 +86,3 @@ func size(bytes int64) string {
 	}
 	return strconv.FormatInt(bytes, 10) + "B"
 }
-

@@ -61,4 +61,3 @@ type ApiData struct {
 type ApiResponse struct {
 	Data ApiData
 }
-

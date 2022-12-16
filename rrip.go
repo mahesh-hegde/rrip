@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	UserAgent    = "rrip / Go CLI Tool"
-	DefaultLimit = 100
+	UserAgent            = "rrip / Go CLI Tool"
+	DefaultLimit         = 100
 	defaultLogLinkFormat = "{{final_url}}"
 )
 
@@ -636,13 +636,16 @@ func main() {
 		options.MaxSize *= 1000 // KB
 	}
 
-	regexVals := []struct{re **regexp.Regexp; opt string}{
-		{&options.TitleContains,    titleContains},
+	regexVals := []struct {
+		re  **regexp.Regexp
+		opt string
+	}{
+		{&options.TitleContains, titleContains},
 		{&options.TitleNotContains, titleNotContains},
-		{&options.FlairContains,    flairContains},
+		{&options.FlairContains, flairContains},
 		{&options.FlairNotContains, flairNotContains},
-		{&options.LinkContains,     linkContains},
-		{&options.LinkNotContains,  linkNotContains},
+		{&options.LinkContains, linkContains},
+		{&options.LinkNotContains, linkNotContains},
 	}
 
 	for _, rv := range regexVals {
