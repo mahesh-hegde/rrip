@@ -46,6 +46,8 @@ var client = http.Client{
 	},
 }
 
+var falseValues = map[string]bool{"": true, "nil": true, "false": true, "0": true}
+
 func pickPreview(choices ImagePreview, width int) *ImagePreviewEntry {
 	if width == -1 {
 		return &choices.Source
@@ -108,30 +110,6 @@ func HandlePosts(body io.ReadCloser, handler func(PostData)) (last string) {
 	}
 	log(horizontalDashedLine)
 	return last
-}
-
-func removeSpecialChars(filename string) string {
-	var b strings.Builder
-	var banned map[rune]string
-	if options.AllowSpecialChars {
-		banned = minimalSubst
-	} else {
-		banned = windowsSubst
-	}
-	for _, r := range filename {
-		repl, spec := banned[r]
-		if spec {
-			b.WriteString(repl)
-		} else if !strconv.IsPrint(r) {
-			b.WriteRune('-')
-		} else {
-			b.WriteRune(r)
-		}
-	}
-	if options.AllowSpecialChars {
-		return b.String()
-	}
-	return sanitizeWindowsFilename(b.String())
 }
 
 // Returns whether the image link can be downloaded
@@ -369,7 +347,7 @@ func DownloadPost(post PostData) {
 	}
 	filename := title + " [" + strings.TrimPrefix(post.Name, "t3_") +
 		"]" + extension
-	filename = removeSpecialChars(filename)
+	filename = sanitizeFileName(filename, options.AllowSpecialChars)
 	log("URL: ", url, " | Score:", post.Score)
 	if imageUrl != url {
 		log("->", imageUrl)

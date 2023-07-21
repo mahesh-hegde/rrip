@@ -1,6 +1,9 @@
 package main
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+)
 
 var windowsSubst = map[rune]string{
 	'<':  "&lt;",
@@ -37,4 +40,28 @@ func sanitizeWindowsFilename(name string) string {
 		return "__Blank__"
 	}
 	return name
+}
+
+func sanitizeFileName(filename string, allowSpecialChars bool) string {
+	var b strings.Builder
+	var banned map[rune]string
+	if allowSpecialChars {
+		banned = minimalSubst
+	} else {
+		banned = windowsSubst
+	}
+	for _, r := range filename {
+		repl, spec := banned[r]
+		if spec {
+			b.WriteString(repl)
+		} else if !strconv.IsPrint(r) {
+			b.WriteRune('-')
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	if allowSpecialChars {
+		return b.String()
+	}
+	return sanitizeWindowsFilename(b.String())
 }
