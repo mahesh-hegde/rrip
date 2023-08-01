@@ -124,6 +124,31 @@ rrip -download-preview -preview-res=640 -data-output-file=meme.txt -data-output-
 rrip -d -data-output-file=imaginary_landscapes.txt -data-output-format="{{score}} {{.final_url}} {{.quoted_title}} {{.author}}" r/ImaginaryLandscapes
 ```
 
+### Using template options
+Go `text/template` syntax can be used to do versatile filtering. It can also be used to do formatting of logged links.
+
+```sh
+## Inspect the JSON of post using `print-post-data`
+./rrip -print-post-data -max-files=1 r/AMOLEDBackgrounds
+
+## After inspecting the JSON, you can use the field values in `-template-filter` to filter based on any attribute.
+## If the template evaluates to "false", "", or "0", the post will be skipped by rrip
+
+## Example: only download gilded posts
+./rrip -template-filter='{{gt .gilded 0.0}}' -max-files=20 -sort=top-y
+ear r/AMOLEDBackgrounds
+
+## Example: only download posts by a given author, say u/temporary_08
+./rrip -template-filter='{{eq .author "temporary_08"}}' -max-files=20  r/AMOLEDBackgrounds
+
+## Example: skip potentially unsafe content
+./rrip -template-filter='{{not .over_18}}' -max-files=20  r/AMOLEDBackgrounds
+
+## Example: Log links to a file with author, upvote ratio, and quoted title.
+## Use dry run (-d) to skip download
+./rrip -d -data-output-file=amoled.txt -data-output-format='{{.upvote_ratio}} {{.author}} {{.quoted_title}}' r/AMOLEDBackgrounds
+```
+
 ## Caveats
 * Can't handle crossposts when downloading preview image.
 * No support for downloading albums.

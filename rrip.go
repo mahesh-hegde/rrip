@@ -76,6 +76,8 @@ func PrintStat() {
 
 func Finish() {
 	PrintStat()
+	// This seems to fix partial printing with -print-post-data
+	os.Stderr.Close()
 	completion <- true
 }
 
