@@ -8,7 +8,6 @@ import (
 
 func createTemplate(name string, tm string) *template.Template {
 	tmpl, err := template.New(name).Parse(tm)
-	log("create template")
 	check(err, "cannot parse template:", tm)
 	return tmpl
 }

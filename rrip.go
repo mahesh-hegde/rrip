@@ -1,9 +1,8 @@
 package main
 
 import (
-	"crypto/tls" // For disabling http/2!
+	"crypto/tls"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"html"
 	"io"
@@ -14,7 +13,11 @@ import (
 	"regexp"
 	"strings"
 	"text/template"
+
+	flag "github.com/spf13/pflag"
 )
+
+// For disabling http/2!
 
 const (
 	UserAgent               = "rrip / Go CLI Tool"
@@ -536,20 +539,20 @@ func main() {
 	var dataOutputFormat, templateFilter string
 
 	// option parsing
-	flag.BoolVar(&options.Debug, "v", false, "Enable verbose output (devel)")
-	flag.BoolVar(&options.DryRun, "d", false, "DryRun i.e just print urls and names (devel)")
+	flag.BoolVarP(&options.Debug, "verbose", "v", false, "Enable verbose output (devel)")
+	flag.BoolVarP(&options.DryRun, "dry-run", "d", false, "DryRun i.e just print urls and names (devel)")
 	flag.BoolVar(&options.AllowSpecialChars, "allow-special-chars", false,
 		"Allow all characters in filenames except / and \\, "+
 			"And windows-special filenames like NUL")
-	flag.BoolVar(&options.PrintPostData, "print-post-data", false, "Print posts data as JSON. Implies dry run")
+	flag.BoolVarP(&options.PrintPostData, "print-post-data", "P", false, "Print posts data as JSON. Implies dry run")
 	flag.StringVar(&options.After, "after", "", "Get posts after the given ID")
-	flag.StringVar(&options.UserAgent, "useragent", UserAgent, "UserAgent string")
+	flag.StringVarP(&options.UserAgent, "useragent", "U", UserAgent, "UserAgent string")
 	flag.Int64Var(&options.MaxStorage, "max-storage", -1, "Data usage limit in MB, -1 for no limit")
-	flag.Int64Var(&options.MaxSize, "max-size", -1, "Max size of media file in KB, -1 for no limit")
+	flag.Int64VarP(&options.MaxSize, "max-size", "z", -1, "Max size of media file in KB, -1 for no limit")
 	flag.StringVar(&options.Folder, "folder", "", "Target folder name")
 
-	flag.StringVar(&dataOutputFileName, "data-output-file", "", "Log media links to given file")
-	flag.StringVar(&dataOutputFormat, "data-output-format", defaultDataOutputFormat, "Template for saving post data")
+	flag.StringVarP(&dataOutputFileName, "data-output-file", "O", "", "Log media links to given file")
+	flag.StringVarP(&dataOutputFormat, "data-output-format", "f", defaultDataOutputFormat, "Template for saving post data")
 	flag.StringVar(&templateFilter, "template-filter", "", "Posts will be ignored if this template evaluates to \"false\", \"0\" or empty string")
 
 	flag.StringVar(&options.OgType, "og-type", "", "Look Up for a media link in page's og:property"+
@@ -604,9 +607,9 @@ func main() {
 
 	// validate some arguments
 	toCheck := map[string]int64{
-		"-max":         int64(options.MaxFiles),
-		"-max-storage": options.MaxStorage,
-		"-max-size":    options.MaxSize,
+		"--max":         int64(options.MaxFiles),
+		"--max-storage": options.MaxStorage,
+		"--max-size":    options.MaxSize,
 	}
 	for option, value := range toCheck {
 		if value < 1 && value != -1 {
@@ -622,17 +625,17 @@ func main() {
 
 	if options.PreviewRes > 0 && !options.DownloadPreview &&
 		!options.PreferPreview {
-		fatal("-download-preview or -prefer-preview should be used with " +
-			"-preview-res")
+		fatal("--download-preview or --prefer-preview should be used with " +
+			"--preview-res")
 	}
 
 	if options.PreferPreview && options.DownloadPreview {
-		fatal("Use only one of -prefer-preview and -download-preview")
+		fatal("Use only one of --prefer-preview and --download-preview")
 	}
 
 	og := options.OgType
 	if og != "" && og != "video" && og != "image" && og != "any" {
-		fatal("Only supported values for -og-type are image, video and any")
+		fatal("Only supported values for --og-type are image, video and any")
 	}
 
 	// if PrintPostData is enabled, enable dry run

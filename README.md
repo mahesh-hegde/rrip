@@ -1,4 +1,4 @@
-## rrip
+# rrip - Bulk-download images from subreddits
 
 Program to bulk-download image from reddit subreddits.
 
@@ -12,7 +12,7 @@ Program to bulk-download image from reddit subreddits.
 
 * Log final download URLs to a file using a custom format string.
 
-* Download images from Reddit preview links instead of source. (Experimental)
+* Download images from Reddit preview links instead of source, saving some space.
 
 * Scrape images from links that don't end with media extensions. (Experimental)
 
@@ -41,69 +41,19 @@ Download from Release section and unpack the binary executable somewhere in your
 I wrote this on Linux. May not work well on Windows. A best-effort default option is enabled to sanitize filenames so that they can be saved on Windows / Android. But don't blame me if you face some quirks of Windows OS. 
 
 ## Usage
-```
-Usage: rrip <options> <r/subreddit>
-  -after string
-        Get posts after the given ID
-  -allow-special-chars
-        Allow all characters in filenames except / and \, And windows-special filenames like NUL
-  -d    DryRun i.e just print urls and names (devel)
-  -download-preview
-        download reddit preview image instead of posted URL
-  -entries-limit int
-        Number of entries to fetch in one API request (devel) (default 100)
-  -flair-contains string
-        Download if flair contains substring matching given regex
-  -flair-not-contains string
-        Download if flair does not contain substring matching given regex
-  -folder string
-        Target folder name
-  -help
-        Show this help message
-  -link-contains string
-        Download if posted link contains substring matching given regex
-  -link-not-contains string
-        Download if posted link does not contain substring matching given regex
-  -log-links string
-        Log media links to given file
-  -log-links-format string
-        Format of links logged. allowed placeholders: {{final_url}}, {{posted_url}}, {{id}}, {{author}}, {{title}}, {{score}} (default "{{final_url}}")
-  -max-files int
-        Max number of files to download (+ve), -1 for no limit (default -1)
-  -max-size int
-        Max size of media file in KB, -1 for no limit (default -1)
-  -max-storage int
-        Data usage limit in MB, -1 for no limit (default -1)
-  -min-score int
-        Minimum score of the post to download
-  -og-type string
-        Look Up for a media link in page's og:property if link itself is not image/video (experimental). supported values: video, image, any
-  -preview-res int
-        Width of preview to download, eg: 640, 960, 1080 (default -1)
-  -search string
-        Search for given term
-  -sort string
-        Sort: best|hot|new|rising|top-<all|year|month|week|day>
-  -title-contains string
-        Download if title contains substring matching given regex
-  -title-not-contains string
-        Download if title does not contain substring matching given regex
-  -useragent string
-        UserAgent string (default "rrip / Go CLI Tool")
-  -v    Enable verbose output (devel)
-```
+Invoke `rrip` without arguments for up-to-date usage output.
 
 ## tl;dr
 
 ```sh
 ## Download only <200KB files from r/Wallpaper
-rrip -max-size=200 r/Wallpaper
+rrip --max-size=200 r/Wallpaper
 
 ## Download all time top from r/WildLifePhotography, without exceeding 20MB storage or 50 files
-rrip -max-storage=20 -max-files=50 -sort=top-all r/WildlifePhotography
+rrip --max-storage=20 --max-files=50 --sort=top-all r/WildlifePhotography
 
 ## Search "Neon" on r/AMOLEDBackgrounds and download top 20, sorted by top voted in past one year
-rrip -search="Neon" -max-files=20 -sort=top-year r/AMOLEDBackgrounds
+rrip --search="Neon" --max-files=20 --sort=top-year r/AMOLEDBackgrounds
 
 ## Download memes from r/LogicGateMemes, download reddit previews (640p)
 ## instead of original image, for space savings.
@@ -116,37 +66,37 @@ rrip -search="Neon" -max-files=20 -sort=top-year r/AMOLEDBackgrounds
 ## use -prefer-preview instead of -download-preview 
 ## to download original URL if no preview could be found
 
-rrip -download-preview -preview-res=640 -data-output-file=meme.txt -data-output-format="{{.final_url}} {{title}}" r/LogicGateMemes
+rrip --download-preview --preview-res=640 --data-output-file=meme.txt --data-output-format="{{.final_url}} {{.title}}" r/LogicGateMemes
 
 ## Log all image links from r/ImaginaryLandscape
 ## without downloading files, using -d (dry run) option.
 ## (Reddit shows last 600 or so.., not really "all")
-rrip -d -data-output-file=imaginary_landscapes.txt -data-output-format="{{score}} {{.final_url}} {{.quoted_title}} {{.author}}" r/ImaginaryLandscapes
+rrip -d --data-output-file=imaginary_landscapes.txt --data-output-format="{{.score}} {{.final_url}} {{.quoted_title}} {{.author}}" r/ImaginaryLandscapes
 ```
 
 ### Using template options
 Go `text/template` syntax can be used to do versatile filtering. It can also be used to do formatting of logged links.
 
 ```sh
-## Inspect the JSON of post using `print-post-data`
-./rrip -print-post-data -max-files=1 r/AMOLEDBackgrounds
+## Inspect the JSON of post using --print-post-data
+rrip --print-post-data --max-files=1 r/AMOLEDBackgrounds
 
 ## After inspecting the JSON, you can use the field values in `-template-filter` to filter based on any attribute.
 ## If the template evaluates to "false", "", or "0", the post will be skipped by rrip
 
 ## Example: only download gilded posts
-./rrip -template-filter='{{gt .gilded 0.0}}' -max-files=20 -sort=top-y
+rrip --template-filter='{{gt .gilded 0.0}}' --max-files=20 --sort=top-y
 ear r/AMOLEDBackgrounds
 
 ## Example: only download posts by a given author, say u/temporary_08
-./rrip -template-filter='{{eq .author "temporary_08"}}' -max-files=20  r/AMOLEDBackgrounds
+rrip --template-filter='{{eq .author "temporary_08"}}' --max-files=20  r/AMOLEDBackgrounds
 
 ## Example: skip potentially unsafe content
-./rrip -template-filter='{{not .over_18}}' -max-files=20  r/AMOLEDBackgrounds
+rrip --template-filter='{{not .over_18}}' --max-files=20  r/AMOLEDBackgrounds
 
 ## Example: Log links to a file with author, upvote ratio, and quoted title.
 ## Use dry run (-d) to skip download
-./rrip -d -data-output-file=amoled.txt -data-output-format='{{.upvote_ratio}} {{.author}} {{.quoted_title}}' r/AMOLEDBackgrounds
+rrip -d --data-output-file=amoled.txt --data-output-format='{{.upvote_ratio}} {{.author}} {{.quoted_title}}' r/AMOLEDBackgrounds
 ```
 
 ## Caveats
@@ -154,4 +104,3 @@ ear r/AMOLEDBackgrounds
 * No support for downloading albums.
 * Some options don't work together
 * Many other caveats I don't remember.
-
