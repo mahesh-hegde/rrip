@@ -116,18 +116,17 @@ rrip -search="Neon" -max-files=20 -sort=top-year r/AMOLEDBackgrounds
 ## use -prefer-preview instead of -download-preview 
 ## to download original URL if no preview could be found
 
-rrip -download-preview -preview-res=640 -log-links=meme.txt -log-links-format="{{final_url}} {{title}}" r/LogicGateMemes
+rrip -download-preview -preview-res=640 -data-output-file=meme.txt -data-output-format="{{.final_url}} {{title}}" r/LogicGateMemes
 
 ## Log all image links from r/ImaginaryLandscape
 ## without downloading files, using -d (dry run) option.
 ## (Reddit shows last 600 or so.., not really "all")
-rrip -d -log-links=imaginary_landscapes.txt -log-links-format="{{score}} {{final_url}} {{quoted_title}} {{author}}" r/ImaginaryLandscapes
+rrip -d -data-output-file=imaginary_landscapes.txt -data-output-format="{{score}} {{.final_url}} {{.quoted_title}} {{.author}}" r/ImaginaryLandscapes
 ```
 
 ## Caveats
-* Can't handle crossposts etc.. when downloading preview image.
+* Can't handle crossposts when downloading preview image.
 * No support for downloading albums.
-* Terminal size detection works only on linux
 * Some options don't work together
 * Many other caveats I don't remember.
 

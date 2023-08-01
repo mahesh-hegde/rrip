@@ -17,9 +17,9 @@ import (
 )
 
 const (
-	UserAgent            = "rrip / Go CLI Tool"
-	DefaultLimit         = 100
-	defaultLogLinkFormat = "{{final_url}}"
+	UserAgent               = "rrip / Go CLI Tool"
+	DefaultLimit            = 100
+	defaultDataOutputFormat = "{{.final_url}}"
 )
 
 var terminalColumns = getTerminalSize()
@@ -235,13 +235,13 @@ func Traverse(path string, handler PostHandler) {
 		log("Request: ", link)
 		response, err := FetchUrlWithMethod(link, "GET", "application/json")
 		check(err, "Cannot get JSON response")
-		defer response.Body.Close()
 
 		processed := stats.Processed
 		after = HandlePosts(response.Body, handler)
 		if stats.Processed == processed {
 			Finish()
 		}
+		response.Body.Close()
 	}
 }
 
@@ -308,7 +308,9 @@ func DownloadPost(post PostData, postDataMap map[string]any) {
 		return
 	}
 
-	// TODO: Add some synthetic attributes
+	postDataMap["quoted_title"] = quote(post.Title)
+	postDataMap["final_url"] = "![will be set after processing]"
+	postDataMap["rrip_filename"] = "![will be set after processing]"
 
 	if options.TemplateFilter != nil {
 		templated := formatTemplate(options.TemplateFilter, postDataMap)
@@ -358,10 +360,6 @@ func DownloadPost(post PostData, postDataMap map[string]any) {
 		log("Skip non-imagelike entry: ", title, " | ", url)
 		return
 	}
-	if options.DataOutputFile != nil && options.DataOutputFormat != nil {
-		fmt.Fprintln(options.DataOutputFile,
-			formatTemplate(options.DataOutputFormat, postDataMap))
-	}
 
 	filename := title + " [" + strings.TrimPrefix(post.Name, "t3_") +
 		"]" + extension
@@ -369,6 +367,14 @@ func DownloadPost(post PostData, postDataMap map[string]any) {
 	log("URL: ", url, " | Score:", post.Score)
 	if imageUrl != url {
 		log("->", imageUrl)
+	}
+
+	postDataMap["rrip_filename"] = filename
+	postDataMap["final_url"] = imageUrl
+
+	if options.DataOutputFile != nil && options.DataOutputFormat != nil {
+		fmt.Fprintln(options.DataOutputFile,
+			formatTemplate(options.DataOutputFormat, postDataMap))
 	}
 
 	printName := func() {
@@ -502,7 +508,6 @@ func DownloadPost(post PostData, postDataMap map[string]any) {
 	if stats.Saved == options.MaxFiles {
 		Finish()
 	}
-	return
 }
 
 func createLinksFile(filename string) io.WriteCloser {
@@ -534,7 +539,7 @@ func main() {
 	flag.BoolVar(&options.AllowSpecialChars, "allow-special-chars", false,
 		"Allow all characters in filenames except / and \\, "+
 			"And windows-special filenames like NUL")
-	flag.BoolVar(&options.PrintPostData, "print-post-data", false, "Print posts data as JSON. Implies dry run without verbose")
+	flag.BoolVar(&options.PrintPostData, "print-post-data", false, "Print posts data as JSON. Implies dry run")
 	flag.StringVar(&options.After, "after", "", "Get posts after the given ID")
 	flag.StringVar(&options.UserAgent, "useragent", UserAgent, "UserAgent string")
 	flag.Int64Var(&options.MaxStorage, "max-storage", -1, "Data usage limit in MB, -1 for no limit")
@@ -542,7 +547,7 @@ func main() {
 	flag.StringVar(&options.Folder, "folder", "", "Target folder name")
 
 	flag.StringVar(&dataOutputFileName, "data-output-file", "", "Log media links to given file")
-	flag.StringVar(&dataOutputFormat, "data-output-format", "", "Template for saving post data")
+	flag.StringVar(&dataOutputFormat, "data-output-format", defaultDataOutputFormat, "Template for saving post data")
 	flag.StringVar(&templateFilter, "template-filter", "", "Posts will be ignored if this template evaluates to \"false\", \"0\" or empty string")
 
 	flag.StringVar(&options.OgType, "og-type", "", "Look Up for a media link in page's og:property"+
@@ -628,7 +633,10 @@ func main() {
 		fatal("Only supported values for -og-type are image, video and any")
 	}
 
-	// enable debug output in case of dry run
+	// if PrintPostData is enabled, enable dry run
+	options.DryRun = options.DryRun || options.PrintPostData
+
+	// enable debug output in case of dry run w/o print post data
 	options.Debug = options.Debug || (options.DryRun && !options.PrintPostData)
 
 	if options.After != "" && !strings.HasPrefix(options.After, "t3_") {

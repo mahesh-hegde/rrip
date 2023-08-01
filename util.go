@@ -7,8 +7,6 @@ import (
 	"strconv"
 )
 
-// currently works on linux only
-// on other OS 80 is assumed
 func getTerminalSize() int {
 	cmd := exec.Command("stty", "size")
 	cmd.Stdin = os.Stdin
