@@ -23,6 +23,7 @@ const (
 	UserAgent               = "rrip / Go CLI Tool"
 	DefaultLimit            = 100
 	defaultDataOutputFormat = "{{.final_url}}"
+	defaultFileNameFormat   = "{{.title}}"
 )
 
 var terminalColumns = getTerminalSize()
@@ -187,12 +188,12 @@ func Traverse(path string, handler PostHandler) {
 	query := url.Values{}
 
 	unsuffixedPath := strings.TrimSuffix(path, "/")
-	target := "https://www.reddit.com/" + unsuffixedPath
 
-	// front page URL
-	if unsuffixedPath == "" && options.Search == "" && options.Sort == "" {
-		options.Sort = "hot"
+	if options.Search == "" && unsuffixedPath == "" {
+		fatal("Please provide a search string or subreddit")
 	}
+
+	target := "https://www.reddit.com/" + unsuffixedPath
 
 	after := options.After
 
@@ -366,8 +367,8 @@ func DownloadPost(post PostData, postDataMap map[string]any) {
 		return
 	}
 
-	filename := title + " [" + strings.TrimPrefix(post.Name, "t3_") +
-		"]" + extension
+	filenameRaw := formatTemplate(options.FilenameFormat, postDataMap)
+	filename := fmt.Sprintf("%s [%s]%s", filenameRaw, post.Id, extension)
 	filename = sanitizeFileName(filename, options.AllowSpecialChars)
 	log("URL: ", url, " | Score:", post.Score)
 	if imageUrl != url {
@@ -536,7 +537,7 @@ func main() {
 	var titleContains, titleNotContains string
 	var flairContains, flairNotContains string
 	var linkContains, linkNotContains string
-	var dataOutputFormat, templateFilter string
+	var dataOutputFormat, templateFilter, filenameFormat string
 
 	// option parsing
 	flag.BoolVarP(&options.Debug, "verbose", "v", false, "Enable verbose output (devel)")
@@ -554,6 +555,7 @@ func main() {
 	flag.StringVarP(&dataOutputFileName, "data-output-file", "O", "", "Log media links to given file")
 	flag.StringVarP(&dataOutputFormat, "data-output-format", "f", defaultDataOutputFormat, "Template for saving post data")
 	flag.StringVar(&templateFilter, "template-filter", "", "Posts will be ignored if this template evaluates to \"false\", \"0\" or empty string")
+	flag.StringVarP(&filenameFormat, "filename-format", "t", defaultFileNameFormat, "Template for naming files. (Post ID is always appended)")
 
 	flag.StringVar(&options.OgType, "og-type", "", "Look Up for a media link in page's og:property"+
 		" if link itself is not image/video (experimental). supported values: video, image, any")
@@ -586,7 +588,7 @@ func main() {
 
 	flag.Parse()
 	args := flag.Args()
-	if len(args) != 1 || help {
+	if (len(args) != 1 && options.Search == "") || help {
 		eprintf("Usage: %s <options> <r/subreddit>\n", os.Args[0])
 		flag.PrintDefaults()
 		os.Exit(1)
@@ -603,7 +605,12 @@ func main() {
 		defer options.DataOutputFile.Close()
 	}
 
-	path := strings.TrimSuffix(args[0], "/")
+	var path string = ""
+
+	if len(args) > 0 {
+		// TODO: Join multireddits
+		path = strings.TrimSuffix(args[0], "/")
+	}
 
 	// validate some arguments
 	toCheck := map[string]int64{
@@ -682,6 +689,7 @@ func main() {
 	}{
 		{"data-output-format", &options.DataOutputFormat, dataOutputFormat},
 		{"template-filter", &options.TemplateFilter, templateFilter},
+		{"filename-format", &options.FilenameFormat, filenameFormat},
 	}
 
 	for _, tv := range templateVals {
@@ -691,8 +699,12 @@ func main() {
 	}
 
 	// Create folder
+	folderPath := "rrip-downloads"
+	if path != "" {
+		folderPath = path
+	}
 	options.Folder = coalesce(options.Folder,
-		strings.TrimPrefix(strings.ReplaceAll(path, "/", "."), "r."))
+		strings.TrimPrefix(strings.ReplaceAll(folderPath, "/", "."), "r."))
 	_, err = os.Stat(options.Folder)
 
 	// Note: not creating folder anew if dry run

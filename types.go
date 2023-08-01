@@ -20,6 +20,7 @@ type Options struct {
 	DataOutputFile                   io.WriteCloser
 	DataOutputFormat                 *template.Template
 	TemplateFilter                   *template.Template
+	FilenameFormat                   *template.Template
 	PrintPostData                    bool
 	TitleContains, TitleNotContains  *regexp.Regexp
 	FlairContains, FlairNotContains  *regexp.Regexp
@@ -42,12 +43,12 @@ type ImagePreview struct {
 }
 
 type PostData struct {
-	Url, Name, Title  string
-	Score             int
-	Subreddit, Author string
-	LinkFlairText     string
-	CreatedUtc        int64
-	Preview           struct {
+	Url, Name, Title, Id string
+	Score                int
+	Subreddit, Author    string
+	LinkFlairText        string
+	CreatedUtc           int64
+	Preview              struct {
 		Images []ImagePreview
 	}
 }

@@ -97,6 +97,9 @@ rrip --template-filter='{{not .over_18}}' --max-files=20  r/AMOLEDBackgrounds
 ## Example: Log links to a file with author, upvote ratio, and quoted title.
 ## Use dry run (-d) to skip download
 rrip -d --data-output-file=amoled.txt --data-output-format='{{.upvote_ratio}} {{.author}} {{.quoted_title}}' r/AMOLEDBackgrounds
+
+## Example: Change file name format using Go templates.
+rrip --filename-format='{{.author}} {{.title}} {{.score}}' r/AMOLEDBackgrounds
 ```
 
 ## Caveats
