@@ -154,7 +154,7 @@ func CheckAndResolveImage(linkString string) (finalLink string, extension string
 			log("Unsupported ContentType when looking for og: url")
 			return "", ""
 		}
-		ogUrl, err := GetOgUrl(response.Body)
+		ogUrl, _ := GetOgUrl(response.Body)
 		if ogUrl != "" {
 			return CheckAndResolveImage(ogUrl)
 		}
@@ -357,9 +357,7 @@ func DownloadPost(post PostData, postDataMap map[string]any) {
 		}
 	} else if options.PreferPreview {
 		usePreview()
-	} else {
-		// proceed with URL found in the post
-	}
+	} // else proceed with post.data.url
 
 	imageUrl, extension := CheckAndResolveImage(url)
 	if imageUrl == "" {
@@ -424,7 +422,6 @@ func DownloadPost(post PostData, postDataMap map[string]any) {
 				log("Error removing file")
 			}
 		}
-		return
 	}
 	// Fetch
 	response, err := FetchUrlWithMethod(imageUrl, "HEAD", "")
