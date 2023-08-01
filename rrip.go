@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"text/template"
 )
 
 const (
@@ -97,14 +98,26 @@ func Finish() {
 // handler is run for every post entry unless handler exits early
 // returns last posts's id ('name' attribute in json)
 // which is useful to fetch next page
-func HandlePosts(body io.ReadCloser, handler func(PostData)) (last string) {
-	dec := json.NewDecoder(body)
-	apiResponse := ApiResponse{}
-	err := dec.Decode(&apiResponse)
+func HandlePosts(body io.ReadCloser, handler PostHandler) (last string) {
+	b, err := io.ReadAll(body)
 	check(err)
-	for _, post := range apiResponse.Data.Children {
+
+	apiResponseMap := map[string]any{}
+	err = json.Unmarshal(b, &apiResponseMap)
+	check(err)
+
+	apiResponse := ApiResponse{}
+	err = json.Unmarshal(b, &apiResponse)
+	check(err)
+
+	children := apiResponse.Data.Children
+	dataMap := apiResponseMap["data"].(map[string]any)
+	childrenArray := dataMap["children"].([]any)
+
+	for i, post := range children {
 		stats.Processed += 1
-		handler(post.Data)
+		childMap := childrenArray[i].(map[string]any)
+		handler(post.Data, childMap["data"].(map[string](any)))
 		log(horizontalDashedLine)
 		last = post.Data.Name
 	}
@@ -180,7 +193,7 @@ func GetUrl(url string) (*http.Response, error) {
 	return FetchUrlWithMethod(url, "GET", "")
 }
 
-func Traverse(path string, handler func(PostData)) {
+func Traverse(path string, handler PostHandler) {
 	query := url.Values{}
 
 	unsuffixedPath := strings.TrimSuffix(path, "/")
@@ -208,7 +221,9 @@ func Traverse(path string, handler func(PostData)) {
 	}
 
 	if options.Search == "" {
-		target += "/" + sortString
+		if sortString != "" {
+			target += "/" + sortString
+		}
 	} else {
 		target += "/search"
 		query.Set("sort", sortString)
@@ -261,11 +276,23 @@ func chooseByRegexMatch(re *regexp.Regexp, s string) bool {
 	return true
 }
 
-func DownloadPost(post PostData) {
+func DownloadPost(post PostData, postDataMap map[string]any) {
+	if options.PrintPostData {
+		fmt.Fprintln(os.Stdout, marshallIndent(postDataMap))
+	}
+
 	title := strings.TrimSpace(strings.ReplaceAll(post.Title, "/", "|"))
 	title = html.UnescapeString(title) // &amp; etc.. are escaped in json
 	if len(title) > 194 {
 		title = title[:192] + ".."
+	}
+
+	if options.TemplateFilter != nil {
+		templated := formatTemplate(options.TemplateFilter, postDataMap)
+		if falseValues[templated] {
+			log("template filter evaluated to:", quote(templated))
+			return
+		}
 	}
 
 	if !chooseByRegexMatch(options.TitleContains, post.Title) {
@@ -341,10 +368,11 @@ func DownloadPost(post PostData) {
 		log("Skip non-imagelike entry: ", title, " | ", url)
 		return
 	}
-	if options.LogLinksFile != nil {
-		fmt.Fprintln(options.LogLinksFile,
-			formatFromPost(options.LogLinksFormat, &post, imageUrl))
+	if options.DataOutputFile != nil && options.DataOutputFormat != nil {
+		fmt.Fprintln(options.DataOutputFile,
+			formatTemplate(options.DataOutputFormat, postDataMap))
 	}
+
 	filename := title + " [" + strings.TrimPrefix(post.Name, "t3_") +
 		"]" + extension
 	filename = sanitizeFileName(filename, options.AllowSpecialChars)
@@ -487,7 +515,7 @@ func DownloadPost(post PostData) {
 	return
 }
 
-func createLinksFile(filename string) *os.File {
+func createLinksFile(filename string) io.WriteCloser {
 	if filename == "" {
 		return nil
 	}
@@ -503,11 +531,12 @@ func main() {
 	help := false
 	// whether help option is provided
 	flag.BoolVar(&help, "help", false, "Show this help message")
-	var logLinksTo string
+	var dataOutputFileName string
 	var err error
 	var titleContains, titleNotContains string
 	var flairContains, flairNotContains string
 	var linkContains, linkNotContains string
+	var dataOutputFormat, templateFilter string
 
 	// option parsing
 	flag.BoolVar(&options.Debug, "v", false, "Enable verbose output (devel)")
@@ -515,14 +544,17 @@ func main() {
 	flag.BoolVar(&options.AllowSpecialChars, "allow-special-chars", false,
 		"Allow all characters in filenames except / and \\, "+
 			"And windows-special filenames like NUL")
+	flag.BoolVar(&options.PrintPostData, "print-post-data", false, "Print posts data as JSON. Implies dry run without verbose")
 	flag.StringVar(&options.After, "after", "", "Get posts after the given ID")
 	flag.StringVar(&options.UserAgent, "useragent", UserAgent, "UserAgent string")
 	flag.Int64Var(&options.MaxStorage, "max-storage", -1, "Data usage limit in MB, -1 for no limit")
 	flag.Int64Var(&options.MaxSize, "max-size", -1, "Max size of media file in KB, -1 for no limit")
 	flag.StringVar(&options.Folder, "folder", "", "Target folder name")
-	flag.StringVar(&logLinksTo, "log-links", "", "Log media links to given file")
-	flag.StringVar(&options.LogLinksFormat, "log-links-format", "{{final_url}}", "Format of links logged. "+
-		"allowed placeholders: {{final_url}}, {{posted_url}}, {{id}}, {{author}}, {{title}}, {{score}}")
+
+	flag.StringVar(&dataOutputFileName, "data-output-file", "", "Log media links to given file")
+	flag.StringVar(&dataOutputFormat, "data-output-format", "", "Template for saving post data")
+	flag.StringVar(&templateFilter, "template-filter", "", "Posts will be ignored if this template evaluates to \"false\", \"0\" or empty string")
+
 	flag.StringVar(&options.OgType, "og-type", "", "Look Up for a media link in page's og:property"+
 		" if link itself is not image/video (experimental). supported values: video, image, any")
 	flag.StringVar(&options.Sort, "sort", "", "Sort: best|hot|new|rising|top-<all|year|month|week|day>")
@@ -560,8 +592,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	options.LogLinksFile = createLinksFile(logLinksTo)
-	defer options.LogLinksFile.Close()
+	if dataOutputFileName != "" && dataOutputFormat == "" {
+		fmt.Fprintln(os.Stderr, "Data output format not provided. "+
+			"It must be a valid go template.")
+		os.Exit(1)
+	}
+
+	options.DataOutputFile = createLinksFile(dataOutputFileName)
+	if options.DataOutputFile != nil {
+		defer options.DataOutputFile.Close()
+	}
 
 	path := strings.TrimSuffix(args[0], "/")
 
@@ -599,7 +639,7 @@ func main() {
 	}
 
 	// enable debug output in case of dry run
-	options.Debug = options.Debug || options.DryRun
+	options.Debug = options.Debug || (options.DryRun && !options.PrintPostData)
 
 	if options.After != "" && !strings.HasPrefix(options.After, "t3_") {
 		options.After = "t3_" + options.After
@@ -632,6 +672,21 @@ func main() {
 		}
 	}
 
+	templateVals := []struct {
+		name string
+		tm   **template.Template
+		opt  string
+	}{
+		{"data-output-format", &options.DataOutputFormat, dataOutputFormat},
+		{"template-filter", &options.TemplateFilter, templateFilter},
+	}
+
+	for _, tv := range templateVals {
+		if tv.opt != "" {
+			*(tv.tm) = createTemplate(tv.name, tv.opt)
+		}
+	}
+
 	// Create folder
 	options.Folder = coalesce(options.Folder,
 		strings.TrimPrefix(strings.ReplaceAll(path, "/", "."), "r."))
@@ -651,8 +706,8 @@ func main() {
 	interrupt = make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	go Traverse(path, func(post PostData) {
-		DownloadPost(post)
+	go Traverse(path, func(post PostData, postMap map[string]any) {
+		DownloadPost(post, postMap)
 	})
 
 	select {

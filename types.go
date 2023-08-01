@@ -3,6 +3,7 @@ package main
 import (
 	"io"
 	"regexp"
+	"text/template"
 )
 
 type Stats struct {
@@ -16,8 +17,10 @@ type Options struct {
 	Debug, DryRun, AllowSpecialChars bool
 	MaxStorage, MaxSize              int64
 	OgType                           string
-	LogLinksFile                     io.WriteCloser
-	LogLinksFormat                   string
+	DataOutputFile                   io.WriteCloser
+	DataOutputFormat                 *template.Template
+	TemplateFilter                   *template.Template
+	PrintPostData                    bool
 	TitleContains, TitleNotContains  *regexp.Regexp
 	FlairContains, FlairNotContains  *regexp.Regexp
 	LinkContains, LinkNotContains    *regexp.Regexp
@@ -61,3 +64,5 @@ type ApiData struct {
 type ApiResponse struct {
 	Data ApiData
 }
+
+type PostHandler func(post PostData, postMap map[string]any)
