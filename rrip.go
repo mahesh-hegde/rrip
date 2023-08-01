@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
-	"strconv"
 	"strings"
 	"text/template"
 )
@@ -60,20 +59,6 @@ func pickPreview(choices ImagePreview, width int) *ImagePreviewEntry {
 		}
 	}
 	return nil
-}
-
-func formatFromPost(format string, post *PostData, finalUrl string) string {
-	replacer := strings.NewReplacer(
-		"{{posted_url}}", post.Url,
-		"{{final_url}}", finalUrl,
-		"{{subreddit}}", post.Subreddit,
-		"{{id}}", strings.TrimPrefix(post.Name, "t3_"),
-		"{{author}}", post.Author,
-		"{{score}}", strconv.Itoa(post.Score),
-		"{{title}}", post.Title,
-		"{{quoted_title}}", strconv.Quote(post.Title),
-	)
-	return replacer.Replace(format)
 }
 
 func PrintStat() {
@@ -277,22 +262,10 @@ func chooseByRegexMatch(re *regexp.Regexp, s string) bool {
 }
 
 func DownloadPost(post PostData, postDataMap map[string]any) {
-	if options.PrintPostData {
-		fmt.Fprintln(os.Stdout, marshallIndent(postDataMap))
-	}
-
 	title := strings.TrimSpace(strings.ReplaceAll(post.Title, "/", "|"))
 	title = html.UnescapeString(title) // &amp; etc.. are escaped in json
 	if len(title) > 194 {
 		title = title[:192] + ".."
-	}
-
-	if options.TemplateFilter != nil {
-		templated := formatTemplate(options.TemplateFilter, postDataMap)
-		if falseValues[templated] {
-			log("template filter evaluated to:", quote(templated))
-			return
-		}
 	}
 
 	if !chooseByRegexMatch(options.TitleContains, post.Title) {
@@ -333,6 +306,23 @@ func DownloadPost(post PostData, postDataMap map[string]any) {
 			Finish()
 		}
 		return
+	}
+
+	// TODO: Add some synthetic attributes
+
+	if options.TemplateFilter != nil {
+		templated := formatTemplate(options.TemplateFilter, postDataMap)
+		if falseValues[templated] {
+			log("template filter evaluated to:", quote(templated))
+			return
+		}
+	}
+
+	// Print post data only if its not already excluded by a template / regex
+	// filter.
+
+	if options.PrintPostData {
+		fmt.Fprintln(os.Stderr, marshallIndent(postDataMap))
 	}
 
 	url := post.Url
