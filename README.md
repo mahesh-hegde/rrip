@@ -37,7 +37,7 @@ Download from Release section and unpack the binary executable somewhere in your
 Running from docker image obviously requires a bind mount and setting the user. So you can use an alias like this.
 
 ```bash
-alias rrip="docker run --rm -v $PWD:/app/ -u $(id -u):$(id -g) ghcr.io/mahesh-hegde/rrip:latest"
+alias rrip='docker run --rm -v $PWD:/app/ -u $(id -u):$(id -g) ghcr.io/mahesh-hegde/rrip:latest'
 ```
 
 Then invoke it as `rrip`.
@@ -45,7 +45,7 @@ Then invoke it as `rrip`.
 In case of rootless `podman`, specifying user & group is not required due to uid remapping. So alias will be:
 
 ```bash
-alias rrip="podman run --rm -v $PWD:/app/ ghcr.io/mahesh-hegde/rrip:v0.5"
+alias rrip='podman run --rm -v $PWD:/app/ ghcr.io/mahesh-hegde/rrip:v0.5'
 ```
 
 ## Options
