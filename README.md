@@ -6,44 +6,52 @@ Program to bulk-download image from reddit subreddits.
 
 * Set max size of file, max total size, minimum score etc..
 
-* Filter by post title or link using regular expression.
+* Download images from Reddit preview links instead of source, saving some space.
 
 * If the image / GIF is already downloaded in same folder, skip it.
 
 * Log final download URLs to a file using a custom format string.
 
-* Download images from Reddit preview links instead of source, saving some space.
+* Filter by post title or link using regular expression.
 
-* Scrape images from links that don't end with media extensions. (Experimental)
+* Use Go template syntax to do custom filtering over post properties, or change file name format.
+
+* Single static binary written in Golang
 
 (Note: I have not tested all combinations of features, you might encounter some bugs!)
 
-## Build
+## Install
+### Using `go` command
 Assuming you have Go toolchain installed
 
 ```
 go install github.com/mahesh-hegde/rrip@latest
 ```
 
-or
+### From Release section
+Download from Release section and unpack the binary executable somewhere in your `PATH`.
 
+### Using Docker / Podman
+`rrip` is also available as a lightweight (distroless) [Docker image](https://ghcr.io/mahesh-hegde/rrip) from ghcr.io.
+
+Running from docker image obviously requires a bind mount and setting the user. So you can use an alias like this.
+
+```bash
+alias rrip="docker run --rm -v $PWD:/app/ -u $(id -u):$(id -g) ghcr.io/mahesh-hegde/rrip:latest"
 ```
-git clone --depth=1 https://github.com/mahesh-hegde/rrip.git
-cd rrip
-go build && go install
+
+Then invoke it as `rrip`.
+
+In case of rootless `podman`, specifying user & group is not required due to uid remapping. So alias will be:
+
+```bash
+alias rrip="podman run --rm -v $PWD:/app/ ghcr.io/mahesh-hegde/rrip:v0.5"
 ```
 
-or
-
-Download from Release section and unpack the binary executable somewhere in your `PATH`
-
-## Note about windows
-I wrote this on Linux. May not work well on Windows. A best-effort default option is enabled to sanitize filenames so that they can be saved on Windows / Android. But don't blame me if you face some quirks of Windows OS. 
-
-## Usage
+## Options
 Invoke `rrip` without arguments for up-to-date usage output.
 
-## tl;dr
+## TL;DR
 
 ```sh
 ## Download only <200KB files from r/Wallpaper
@@ -85,8 +93,7 @@ rrip --print-post-data --max-files=1 r/AMOLEDBackgrounds
 ## If the template evaluates to "false", "", or "0", the post will be skipped by rrip
 
 ## Example: only download gilded posts
-rrip --template-filter='{{gt .gilded 0.0}}' --max-files=20 --sort=top-y
-ear r/AMOLEDBackgrounds
+rrip --template-filter='{{gt .gilded 0.0}}' --max-files=20 --sort=top-year r/AMOLEDBackgrounds
 
 ## Example: only download posts by a given author, say u/temporary_08
 rrip --template-filter='{{eq .author "temporary_08"}}' --max-files=20  r/AMOLEDBackgrounds
