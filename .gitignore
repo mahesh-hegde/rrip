@@ -5,3 +5,4 @@ rrip
 *.jpg
 *.gif
 *.mp4
+.vscode/launch.json

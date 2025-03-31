@@ -30,11 +30,15 @@ var terminalColumns = getTerminalSize()
 
 var horizontalDashedLine = strings.Repeat("-", terminalColumns)
 
-var stats Stats
-var options Options
+var (
+	stats   Stats
+	options Options
+)
 
-var interrupt chan os.Signal
-var completion = make(chan bool)
+var (
+	interrupt  chan os.Signal
+	completion = make(chan bool)
+)
 
 var downloadingFilename string
 
@@ -44,11 +48,7 @@ var outputFile *os.File
 
 // BugFix: with transparent HTTP/2, sometimes reddit servers send HTML instead of JSON
 // So create a custom client
-var client = http.Client{
-	Transport: &http.Transport{
-		TLSNextProto: map[string]func(authority string, c *tls.Conn) http.RoundTripper{},
-	},
-}
+var client http.Client
 
 var falseValues = map[string]bool{"": true, "nil": true, "false": true, "0": true}
 
@@ -120,7 +120,7 @@ func HandlePosts(body io.ReadCloser, handler PostHandler) (last string) {
 // if downloadable, return final URL, else return empty string
 // also the extension string that matched
 func CheckAndResolveImage(linkString string) (finalLink string, extension string) {
-	var exts = []string{".jpeg", ".gif", ".mp4", ".jpg", ".png"}
+	exts := []string{".jpeg", ".gif", ".mp4", ".jpg", ".png"}
 	link, err := url.Parse(linkString)
 	check(err)
 	path := link.Path
@@ -173,7 +173,6 @@ func FetchUrlWithMethod(url, method string, acceptMimeType string) (*http.Respon
 	}
 
 	response, err := client.Do(req)
-
 	if err != nil {
 		return nil, err
 	}
@@ -239,7 +238,7 @@ func Traverse(path string, handler PostHandler) {
 			link += "&after=" + after
 		}
 		log("Request: ", link)
-		response, err := FetchUrlWithMethod(link, "GET", "application/json")
+		response, err := FetchUrlWithMethod(link, "GET", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 		check(err, "Cannot get JSON response")
 
 		processed := stats.Processed
@@ -539,6 +538,7 @@ func main() {
 	// option parsing
 	flag.BoolVarP(&options.Debug, "verbose", "v", false, "Enable verbose output (devel)")
 	flag.BoolVarP(&options.DryRun, "dry-run", "d", false, "DryRun i.e just print urls and names (devel)")
+	flag.BoolVar(&options.UseHTTP1, "http1", false, "Use HTTP/1.1 to make calls to Reddit API")
 	flag.BoolVar(&options.AllowSpecialChars, "allow-special-chars", false,
 		"Allow all characters in filenames except / and \\, "+
 			"And windows-special filenames like NUL")
@@ -589,6 +589,16 @@ func main() {
 		eprintf("Usage: %s <options> <r/subreddit>\n", os.Args[0])
 		flag.PrintDefaults()
 		os.Exit(1)
+	}
+
+	if options.UseHTTP1 {
+		client = http.Client{
+			Transport: &http.Transport{
+				TLSNextProto: map[string]func(authority string, c *tls.Conn) http.RoundTripper{},
+			},
+		}
+	} else {
+		client = http.Client{}
 	}
 
 	if dataOutputFileName != "" && dataOutputFormat == "" {
@@ -706,7 +716,7 @@ func main() {
 
 	// Note: not creating folder anew if dry run
 	if os.IsNotExist(err) && !options.DryRun {
-		check(os.MkdirAll(options.Folder, 0755))
+		check(os.MkdirAll(options.Folder, 0o755))
 	}
 
 	// if dry run, change to folder only if folder already existed

@@ -29,6 +29,7 @@ type Options struct {
 	DownloadPreview                  bool
 	PreferPreview                    bool
 	PreviewRes                       int
+	UseHTTP1                         bool
 }
 
 type ImagePreviewEntry struct {
