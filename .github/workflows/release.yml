@@ -2,8 +2,6 @@ name: Release
 
 on:
   push:
-    branches:
-      - main
     tags:
       - '*'
 
@@ -24,22 +22,11 @@ jobs:
       - name: Build
         run: bash ./prepare_release.sh
 
-      - name: Get release name
-        id: release_name
-        run: |
-          if [[ $GITHUB_REF == refs/tags/* ]]; then
-            echo "name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-          else
-            LATEST_TAG=$(git describe --tags --abbrev=0)
-            COMMIT_SHA=$(git rev-parse --short HEAD)
-            echo "name=${LATEST_TAG}-${COMMIT_SHA}" >> $GITHUB_OUTPUT
-          fi
-
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          name: ${{ steps.release_name.outputs.name }}
-          tag_name: ${{ steps.release_name.outputs.name }}
+          name: ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
           draft: false
           prerelease: false
           files: |
