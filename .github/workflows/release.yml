@@ -21,16 +21,6 @@ jobs:
         with:
           go-version: '1.24'
 
-      - name: Go Cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/
-          key: ${{ runner.os }}-go-1.24-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-1.24
-
       - name: Build
         run: bash ./prepare_release.sh
 
