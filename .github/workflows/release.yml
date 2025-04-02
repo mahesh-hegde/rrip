@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - '*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        # with:
+        #   fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.24'
+
+      - name: Build
+        run: bash ./prepare_release.sh
+
+      - name: Get release name
+        id: release_name
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            echo "name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            LATEST_TAG=$(git describe --tags --abbrev=0)
+            COMMIT_SHA=$(git rev-parse --short HEAD)
+            echo "name=${LATEST_TAG}-${COMMIT_SHA}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: ${{ steps.release_name.outputs.name }}
+          tag_name: ${{ steps.release_name.outputs.name }}
+          draft: false
+          prerelease: false
+          files: |
+            rrip_linux_amd64.tar.xz
+            rrip_windows64.zip
+            rrip_macos_intel.tar.xz
+            rrip_macos_arm64.tar.xz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
